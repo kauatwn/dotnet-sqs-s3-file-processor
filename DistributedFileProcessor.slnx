@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DistributedFileProcessor.API/DistributedFileProcessor.API.csproj" />
+    <Project Path="src/DistributedFileProcessor.Application/DistributedFileProcessor.Application.csproj" />
+    <Project Path="src/DistributedFileProcessor.Domain/DistributedFileProcessor.Domain.csproj" />
+    <Project Path="src/DistributedFileProcessor.Infrastructure/DistributedFileProcessor.Infrastructure.csproj" />
+    <Project Path="src/DistributedFileProcessor.Worker/DistributedFileProcessor.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DistributedFileProcessor.IntegrationTests/DistributedFileProcessor.IntegrationTests.csproj" />
+    <Project Path="tests/DistributedFileProcessor.UnitTests/DistributedFileProcessor.UnitTests.csproj" />
+  </Folder>
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+</Solution>
