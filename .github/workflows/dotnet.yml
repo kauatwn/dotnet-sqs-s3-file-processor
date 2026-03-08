@@ -1,0 +1,104 @@
+name: CI (Build, Test, Analyze & Docker)
+
+on:
+  push:
+    branches: ["master"]
+
+  pull_request:
+    branches: ["master"]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build, Test and Analyze
+    runs-on: ubuntu-latest
+
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      COVERAGE_ARGS: '--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover'
+
+    permissions:
+      contents: read # Access to check out code and install dependencies
+
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17
+          distribution: "temurin" # Alternative distribution options are available.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
+      - name: Install SonarQube Cloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ runner.temp }}/scanner
+          dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}/scanner
+
+      - name: Restore dependencies
+        run: dotnet restore DistributedFileProcessor.slnx
+
+      - name: Begin SonarQube Cloud Analysis
+        run: |
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner begin \
+          /k:"kauatwn_DistributedFileProcessor" \
+          /o:"kauatwn" \
+          /d:sonar.token="$SONAR_TOKEN" \
+          /d:sonar.host.url="https://sonarcloud.io" \
+          /d:sonar.projectBaseDir="${{ github.workspace }}" \
+          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+          /d:sonar.coverage.exclusions="**/DistributedFileProcessor.API/**,**/Configurations/**,**/Migrations/**"
+
+      - name: Build
+        run: dotnet build DistributedFileProcessor.slnx --no-restore --configuration Release
+
+      - name: Run Unit Tests
+        run: dotnet test DistributedFileProcessor.slnx --no-build --configuration Release --filter "Category=Unit" ${{ env.COVERAGE_ARGS }}
+
+      - name: Run Integration Tests
+        run: dotnet test DistributedFileProcessor.slnx --no-build --configuration Release --filter "Category=Integration" ${{ env.COVERAGE_ARGS }}
+
+      - name: End SonarQube Cloud Analysis
+        run: ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Docker Build Check
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: .
+          file: src/DistributedFileProcessor.API/Dockerfile
+          push: false
+          tags: distributed-file-processor:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
