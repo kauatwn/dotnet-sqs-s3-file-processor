@@ -1,20 +1,101 @@
 services:
   distributedfileprocessor.api:
+    image: ${DOCKER_REGISTRY-}distributedfileprocessorapi
+    build:
+      context: .
+      dockerfile: src/DistributedFileProcessor.API/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - ASPNETCORE_HTTPS_PORTS=8081
+      - Seq__ServerUrl=http://seq:80
     ports:
-      - "8080"
-      - "8081"
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      seq:
+        condition: service_healthy
     volumes:
       - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
       - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
       - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
       - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https:ro
+
   distributedfileprocessor.worker:
+    image: ${DOCKER_REGISTRY-}distributedfileprocessorworker
+    build:
+      context: .
+      dockerfile: src/DistributedFileProcessor.Worker/Dockerfile
     environment:
       - DOTNET_ENVIRONMENT=Development
+      - Seq__ServerUrl=http://seq:80
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      seq:
+        condition: service_healthy
+
+  seq:
+    image: datalust/seq:2025.2
+    container_name: distributedfileprocessor-seq
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_NOAUTHENTICATION=True
+    ports:
+      - "5341:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
+      - seq_data:/data
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: distributedfileprocessor-postgres
+    shm_size: 128mb
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=fileprocessor_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fileprocessor_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  localstack:
+    image: localstack/localstack:4.14.0
+    container_name: distributedfileprocessor-localstack
+    ports:
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:4510-4559:4510-4559"
+    environment:
+      - DEBUG=${DEBUG:-0}
+    volumes:
+      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  seq_data:
+  
