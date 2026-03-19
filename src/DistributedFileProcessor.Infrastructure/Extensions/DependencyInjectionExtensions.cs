@@ -80,7 +80,7 @@ public static class DependencyInjectionExtensions
             return new AmazonS3Client(credentials, config);
         });
 
-        services.AddScoped<IFileStorageService, S3FileStorageService>();
+        services.AddSingleton<IFileStorageService, S3FileStorageService>();
     }
 
     private static void AddMessagingServices(IServiceCollection services)
@@ -107,7 +107,7 @@ public static class DependencyInjectionExtensions
 
     private static void AddParsingServices(IServiceCollection services)
     {
-        services.AddScoped<ITransactionFileParser, CsvTransactionFileParser>();
+        services.AddTransient<ITransactionFileParser, CsvTransactionFileParser>();
     }
 
     private static void AddResiliencePolicies(IServiceCollection services)
