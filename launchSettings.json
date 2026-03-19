@@ -4,8 +4,8 @@
       "commandName": "DockerCompose",
       "commandVersion": "1.0",
       "serviceActions": {
-        "distributedfileprocessor.worker": "StartDebugging",
-        "distributedfileprocessor.api": "StartDebugging"
+        "distributedfileprocessor.api": "StartDebugging",
+        "distributedfileprocessor.worker": "StartDebugging"
       }
     }
   }
