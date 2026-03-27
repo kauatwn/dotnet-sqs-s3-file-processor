@@ -8,10 +8,10 @@ public sealed partial class DocumentProcessingWorker(
     IMessageConsumer messageConsumer,
     ILogger<DocumentProcessingWorker> logger) : BackgroundService
 {
-    protected override async Task ExecuteAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         LogSqsConsumptionStarted(logger);
-        while (!cancellationToken.IsCancellationRequested)
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
@@ -21,15 +21,15 @@ public sealed partial class DocumentProcessingWorker(
                     var useCase = scope.ServiceProvider.GetRequiredService<IProcessDocumentUseCase>();
 
                     await useCase.ExecuteAsync(jobId, ct);
-                }, cancellationToken);
+                }, stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 LogSqsCommunicationFailed(logger, ex);
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
 
-            await Task.Delay(1000, cancellationToken);
+            await Task.Delay(1000, stoppingToken);
         }
     }
 

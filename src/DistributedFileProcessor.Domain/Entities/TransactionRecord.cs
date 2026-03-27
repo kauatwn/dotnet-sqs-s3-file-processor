@@ -1,5 +1,8 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace DistributedFileProcessor.Domain.Entities;
 
+[ExcludeFromCodeCoverage]
 public sealed class TransactionRecord
 {
     public Guid Id { get; private set; }
