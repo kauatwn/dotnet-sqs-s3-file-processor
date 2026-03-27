@@ -63,10 +63,8 @@ public class CsvTransactionFileParserTests
         // Act
         async Task Act()
         {
-            await foreach (TransactionRecord _ in _sut.ParseStreamAsync(stream, expectedJobId, TestContext.Current.CancellationToken))
-            {
-                // Apenas itera para forçar o erro
-            }
+            await using IAsyncEnumerator<TransactionRecord> enumerator = _sut.ParseStreamAsync(stream, expectedJobId, TestContext.Current.CancellationToken).GetAsyncEnumerator();
+            await enumerator.MoveNextAsync();
         }
 
         // Assert
@@ -89,10 +87,8 @@ public class CsvTransactionFileParserTests
         // Act
         async Task Act()
         {
-            await foreach (TransactionRecord _ in _sut.ParseStreamAsync(stream, expectedJobId, TestContext.Current.CancellationToken))
-            {
-                // Apenas itera para forçar o erro
-            }
+            await using IAsyncEnumerator<TransactionRecord> enumerator = _sut.ParseStreamAsync(stream, expectedJobId, TestContext.Current.CancellationToken).GetAsyncEnumerator();
+            await enumerator.MoveNextAsync();
         }
 
         // Assert
