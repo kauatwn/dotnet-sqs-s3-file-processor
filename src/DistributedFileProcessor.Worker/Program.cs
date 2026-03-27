@@ -31,6 +31,3 @@ var host = builder.Build();
 await host.EnsureLocalStackResourcesAsync();
 
 await host.RunAsync();
-
-[ExcludeFromCodeCoverage(Justification = "Bootstrapping class for the worker. Logic is tested via integration tests.")]
-public partial class Program;
