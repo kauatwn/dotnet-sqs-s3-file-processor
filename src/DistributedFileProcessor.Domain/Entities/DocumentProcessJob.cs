@@ -1,7 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.Domain.Enums;
 
 namespace DistributedFileProcessor.Domain.Entities;
 
+[ExcludeFromCodeCoverage]
 public sealed class DocumentProcessJob
 {
     public Guid Id { get; private set; }
