@@ -1,4 +1,5 @@
-﻿using Amazon.S3;
+﻿using System.Diagnostics.CodeAnalysis;
+using Amazon.S3;
 using Amazon.S3.Util;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -11,6 +12,7 @@ using System.Text.Json;
 
 namespace DistributedFileProcessor.Infrastructure.Extensions;
 
+[ExcludeFromCodeCoverage(Justification = "Infrastructure bootstrapping for LocalStack only. Exception scenarios are simulated environment failures.")]
 public static partial class LocalStackExtensions
 {
     public static async Task EnsureLocalStackResourcesAsync(this IHost host)

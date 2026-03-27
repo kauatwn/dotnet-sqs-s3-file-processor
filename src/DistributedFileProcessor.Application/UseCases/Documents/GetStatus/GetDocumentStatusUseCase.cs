@@ -15,6 +15,6 @@ public sealed class GetDocumentStatusUseCase(IDocumentProcessJobRepository repos
             return null;
         }
 
-        return new DocumentStatusResponse(job.Id, nameof(job.Status), job.S3ObjectKey);
+        return new DocumentStatusResponse(job.Id, job.Status.ToString(), job.S3ObjectKey);
     }
 }
