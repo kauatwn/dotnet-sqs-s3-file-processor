@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.API.Extensions;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
@@ -46,5 +47,6 @@ await app.RunAsync();
 
 namespace DistributedFileProcessor.API
 {
+    [ExcludeFromCodeCoverage(Justification = "Bootstrapping class. Integration tests cover the endpoints, but not the Main method directly.")]
     public class Program;
 }

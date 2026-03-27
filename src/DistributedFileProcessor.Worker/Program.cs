@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
 using DistributedFileProcessor.Worker;
@@ -30,3 +31,6 @@ var host = builder.Build();
 await host.EnsureLocalStackResourcesAsync();
 
 await host.RunAsync();
+
+[ExcludeFromCodeCoverage(Justification = "Bootstrapping class for the worker. Logic is tested via integration tests.")]
+public partial class Program;
