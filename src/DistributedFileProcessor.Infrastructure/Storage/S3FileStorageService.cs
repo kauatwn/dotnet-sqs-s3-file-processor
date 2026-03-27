@@ -1,4 +1,5 @@
-﻿using Amazon.S3;
+﻿using System.Diagnostics.CodeAnalysis;
+using Amazon.S3;
 using Amazon.S3.Model;
 using DistributedFileProcessor.Application.Interfaces;
 using DistributedFileProcessor.Infrastructure.Configuration;
@@ -9,6 +10,7 @@ using Polly.Registry;
 
 namespace DistributedFileProcessor.Infrastructure.Storage;
 
+[ExcludeFromCodeCoverage(Justification = "Thin wrapper over AWS SDK. Behavior is validated through integration tests with LocalStack.")]
 public sealed partial class S3FileStorageService(
     IAmazonS3 s3Client,
     IOptions<S3Options> options,

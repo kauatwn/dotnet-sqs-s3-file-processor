@@ -1,4 +1,5 @@
-﻿using Amazon.SQS;
+﻿using System.Diagnostics.CodeAnalysis;
+using Amazon.SQS;
 using Amazon.SQS.Model;
 using DistributedFileProcessor.Application.Interfaces;
 using DistributedFileProcessor.Infrastructure.Configuration;
@@ -10,6 +11,7 @@ using System.Text.Json;
 
 namespace DistributedFileProcessor.Infrastructure.Messaging;
 
+[ExcludeFromCodeCoverage(Justification = "Thin wrapper over AWS SDK. Behavior is validated through integration tests with LocalStack.")]
 public sealed partial class SqsMessagePublisher(
     IAmazonSQS sqsClient,
     IOptions<SqsOptions> options,
