@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.API.Extensions;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
@@ -44,8 +43,3 @@ app.UseAuthorization();
 app.MapControllers();
 
 await app.RunAsync();
-
-namespace DistributedFileProcessor.API
-{
-    public class Program;
-}

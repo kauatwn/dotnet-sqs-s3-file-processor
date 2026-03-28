@@ -8,7 +8,7 @@ using Testcontainers.PostgreSql;
 
 namespace DistributedFileProcessor.IntegrationTests.Abstractions;
 
-public class IntegrationTestWebAppFactory : WebApplicationFactory<API.Program>, IAsyncLifetime
+public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:18-alpine")
             .WithDatabase("fileprocessor_db_test")
