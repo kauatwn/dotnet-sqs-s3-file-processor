@@ -37,7 +37,7 @@ public class UploadDocumentUseCaseTests
             .ReturnsAsync(expectedUrl);
 
         // Act
-        var response = await _sut.ExecuteAsync(request, CancellationToken.None);
+        var response = await _sut.ExecuteAsync(request, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(response);
@@ -68,7 +68,7 @@ public class UploadDocumentUseCaseTests
             .ThrowsAsync(new Exception("S3 failure"));
 
         // Act
-        Task<UploadDocumentResponse> Act() => _sut.ExecuteAsync(request, CancellationToken.None);
+        Task<UploadDocumentResponse> Act() => _sut.ExecuteAsync(request, TestContext.Current.CancellationToken);
 
         // Assert
         await Assert.ThrowsAsync<Exception>(Act);
