@@ -56,43 +56,42 @@ The solution follows the **Clean Architecture** principles to ensure separation 
 ```plaintext
 dotnet-sqs-s3-file-processor/
 ├── src/
-│   ├── DistributedFileProcessor.API/             # Entry point, Controllers, File Upload
-│   ├── DistributedFileProcessor.Worker/          # Background Service (SQS Consumer)
-│   ├── DistributedFileProcessor.Application/     # Use Cases, DTOs, Business Flow
-│   ├── DistributedFileProcessor.Domain/          # Entities, Enums, Interfaces
-│   └── DistributedFileProcessor.Infrastructure/  # S3, SQS, EF Core, CSV Parsing
+│   ├── DistributedFileProcessor.API/
+│   ├── DistributedFileProcessor.Application/
+│   ├── DistributedFileProcessor.Domain/
+│   ├── DistributedFileProcessor.Infrastructure/
+│   └── DistributedFileProcessor.Worker/
 └── tests/
-    ├── DistributedFileProcessor.UnitTests/       # Fast, isolated tests (Use Cases & Parsers)
-    └── DistributedFileProcessor.IntegrationTests/# Full stack tests (Testcontainers + LocalStack)
+    ├── DistributedFileProcessor.IntegrationTests/
+    └── DistributedFileProcessor.UnitTests/
 ```
 
 ## Architecture & Design Principles
 
-This repository prioritizes **scalability** and **asynchronous processing**, following strict development guidelines for distributed systems.
+This repository prioritizes **scalability** and **asynchronous processing**, utilizing an **Event-Driven Architecture (Choreography)** to ensure maximum decoupling between services.
 
-### 1. Event-Driven Architecture
+### 1. Event-Driven Architecture (Choreography)
 
-To prevent the main Web API from blocking during large file processing (e.g., 100MB CSV files with millions of rows), the system offloads the heavy lifting to a background worker.
+Instead of the API acting as a proxy for file bytes (Double-Hop), the system uses **Pre-signed URLs** to allow direct, secure uploads to S3.
 
-![Architecture Flow](./docs/architecture.png)
-_Figure 1: Event-driven flow from file upload to database ingestion._
+_Figure 1: Event-driven choreography flow from pre-signed URL request to database ingestion._
 
-1. **Upload (API):** The user uploads a CSV file via the API.
-2. **Storage:** The API uploads the raw file to an **Amazon S3** bucket (Streaming approach to avoid RAM exhaustion).
-3. **Tracking:** A job record with a "Pending" status is saved to the PostgreSQL database.
-4. **Messaging:** An event containing the Job ID is published to an **Amazon SQS** queue.
-5. **Processing (Worker):** A background worker listens to the SQS queue, downloads the file from S3, streams and parses the CSV content (`IAsyncEnumerable`), and performs a bulk insert of the records into the database.
+1. **Request Upload (API):** The client requests temporary upload permission. The API generates a **Pre-signed URL**.
+2. **Tracking:** A job record with a "Pending" status is saved to the PostgreSQL database.
+3. **Direct Upload:** The client performs a `PUT` request directly to **Amazon S3** using the provided URL.
+4. **S3 Event Notification:** Upon successful upload, S3 automatically triggers an event notification to **Amazon SQS**.
+5. **Processing (Worker):** A background worker consumes the S3 event from SQS, downloads the file, streams and parses the CSV content (`IAsyncEnumerable`), and performs a bulk insert of the records into the database.
 
 ### 2. Design Patterns
 
 The project utilizes established patterns to ensure modularity and cloud readiness.
 
-|             Pattern              |                 Usage Scenario                  | Implementation                  |
-| :------------------------------: | :---------------------------------------------: | :------------------------------ |
-|        **Thin Wrappers**         |     Isolating AWS SDK calls for S3 and SQS      | `S3FileStorageService`          |
-| **Streaming (IAsyncEnumerable)** | Processing large datasets without memory limits | `CsvTransactionFileParser`      |
-|          **Use Cases**           |      Encapsulating distinct business flows      | `UploadDocumentUseCase`         |
-|     **Dependency Injection**     |      Decoupling layers and cloud services       | `IServiceCollection` extensions |
+|             Pattern              |                           Usage Scenario                           | Implementation                                 |
+| :------------------------------: | :----------------------------------------------------------------: | :--------------------------------------------- |
+|       **Pre-signed URLs**        |  Eliminating the "Double-Hop" problem, reducing API network load   | `DocumentsController` & `S3FileStorageService` |
+|      **Event Choreography**      | Decoupling the API from the Worker, solving the Dual-Write problem | `LocalStackExtensions` & `SqsMessageConsumer`  |
+| **Streaming (IAsyncEnumerable)** |          Processing large datasets without memory limits           | `CsvTransactionFileParser`                     |
+|         **Idempotency**          | Guarding against SQS duplicated messages (At-Least-Once delivery)  | `ProcessDocumentUseCase`                       |
 
 ### 3. Resilience & Error Handling
 
@@ -101,18 +100,34 @@ Distributed systems are prone to network failures. The application handles this 
 - **Polly Resilience Pipelines:** Configured for S3 and SQS interactions to handle transient network errors.
 - **Dead Letter Queues (DLQ):** If the worker fails to process a file (e.g., bad CSV format) after multiple retries, the message is routed to an SQS DLQ, and the job status is marked as "Failed".
 
-### 4. Known Limitations & Trade-offs
+### 4. Known Limitations & Pragmatic Trade-offs
 
-This project is an engineering sandbox focused on the integration between .NET, S3, and SQS.
+This project is an engineering sandbox focused on cloud-native integration. While the architecture solves classic issues like "Dual-Write" and "Double-Hop", it introduces specific pragmatic trade-offs:
 
 > [!WARNING]
-> **Trade-off: The Dual-Write Problem & The Outbox Pattern**
+> **Trade-off 1: Orphan Jobs (Stale State)**
 >
-> In the `UploadDocumentUseCase`, the system saves the job state to the PostgreSQL database and immediately publishes a message to SQS.
+> The API creates a `Pending` job in the database _before_ the client uploads the file to S3 via the Pre-signed URL. If the client abandons the upload, the S3 Event is never triggered, leaving the job `Pending` forever in the database.
 >
-> This is a classic **Dual-Write** scenario. If the database transaction commits successfully, but the network call to AWS SQS fails, the system is left in an inconsistent state (a job stuck in "Pending" forever).
+> _Production Mitigation Strategies:_
+> 1. **Sweeper Worker:** Implement a background cleanup job (e.g., using `BackgroundService` or Quartz.NET) to mark jobs as `Failed` if they remain `Pending` for > 24 hours.
+> 2. **Ephemeral State:** Store the initial `Pending` state in **Redis** with a Time-To-Live (TTL) instead of PostgreSQL. If the file is processed, persist it to the relational database; otherwise, the Redis key simply expires, leaving no stale data.
+
+---
+
+> [!WARNING]
+> **Trade-off 2: Loss of Immediate Edge Validation**
 >
-> **Production Considerations:** In a mission-critical production environment, this issue should be mitigated using the **Transactional Outbox Pattern**. Instead of publishing directly to SQS, the API would write the SQS message payload into an "Outbox" table within the _same database transaction_ as the job record. A separate background publisher (or CDC tool like Debezium) would then reliably poll the outbox table and guarantee At-Least-Once delivery to SQS.
+> By bypassing the Web API for the actual file upload, we lose the ability to validate the file content (e.g., empty file checks, internal structure) synchronously. A corrupted file will only be detected asynchronously when the background worker attempts to parse it.
+>
+> _Production Mitigation:_ Rely on strict S3 Pre-signed URL constraints and implement robust quarantine mechanisms in the Background Worker for invalid payloads.
+
+---
+
+> [!NOTE]
+> **Resolved: At-Least-Once Delivery & Idempotency**
+>
+> SQS and S3 Event Notifications guarantee _At-Least-Once_ delivery, meaning duplicate messages can occur. This system handles this natively: the `ProcessDocumentUseCase` implements an **idempotency check**, gracefully ignoring duplicate messages if the Job is no longer in a `Pending` state.
 
 ### 5. Comprehensive Testing Strategy
 
