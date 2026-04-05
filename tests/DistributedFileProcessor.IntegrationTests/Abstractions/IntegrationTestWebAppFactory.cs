@@ -11,17 +11,18 @@ namespace DistributedFileProcessor.IntegrationTests.Abstractions;
 public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:18-alpine")
-            .WithDatabase("fileprocessor_db_test")
-            .WithUsername("postgres")
-            .WithPassword("postgres")
-            .Build();
+        .WithDatabase("fileprocessor_db_test")
+        .WithUsername("postgres")
+        .WithPassword("postgres")
+        .Build();
 
-    private readonly LocalStackContainer _localStackContainer = new LocalStackBuilder("localstack/localstack:4.14.0")
-            .Build();
+    private readonly LocalStackContainer _localStackContainer = new LocalStackBuilder("localstack/localstack:2026.3.0")
+        .WithEnvironment("LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT", "1")
+        .Build();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.ConfigureAppConfiguration((context, config) =>
+        builder.ConfigureAppConfiguration((_, config) =>
         {
             string localStackUrl = _localStackContainer.GetConnectionString();
 
@@ -38,10 +39,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
             });
         });
 
-        builder.ConfigureServices(services =>
-        {
-            services.AddHostedService<DocumentProcessingWorker>();
-        });
+        builder.ConfigureServices(services => { services.AddHostedService<DocumentProcessingWorker>(); });
     }
 
     public async ValueTask InitializeAsync()
