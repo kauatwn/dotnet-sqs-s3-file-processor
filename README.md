@@ -16,6 +16,7 @@ Ensure you have the following installed to run this project efficiently:
 - **[.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)** (or later)
 - **[Docker Desktop](https://www.docker.com/)** (Required to orchestrate PostgreSQL, Seq, and LocalStack)
 - **IDE:** [Visual Studio](https://visualstudio.microsoft.com), [Visual Studio Code](https://code.visualstudio.com/), or [Rider](https://www.jetbrains.com/rider/).
+- **API Client:** [Postman](https://www.postman.com/) or [Insomnia](https://insomnia.rest/).
 
 ## How to Run
 
@@ -39,7 +40,7 @@ This command spins up the API, the Background Worker, PostgreSQL, Seq (for centr
 docker compose up -d
 ```
 
-_The API Swagger UI will be accessible at `http://localhost:8080/swagger`. Seq (Logs) will be accessible at `http://localhost:5341`._
+_Seq (Logs) will be accessible at `http://localhost:5341`._
 
 ### 4. Execute Tests
 
