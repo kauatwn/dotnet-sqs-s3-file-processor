@@ -2,6 +2,6 @@
 
 public interface IFileStorageService
 {
-    Task<string> UploadFileAsync(string fileName, Stream fileStream, CancellationToken cancellationToken = default);
     Task<Stream> DownloadFileAsync(string s3ObjectKey, CancellationToken cancellationToken = default);
+    Task<string> GeneratePreSignedUploadUrlAsync(string s3ObjectKey, TimeSpan expiration);
 }
