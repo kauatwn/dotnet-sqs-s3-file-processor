@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using DistributedFileProcessor.API.Extensions;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
@@ -20,7 +21,11 @@ builder.Services.AddSerilog((services, loggerConfiguration) =>
     }
 });
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 
 builder.Services.AddInfrastructure(builder.Configuration);
