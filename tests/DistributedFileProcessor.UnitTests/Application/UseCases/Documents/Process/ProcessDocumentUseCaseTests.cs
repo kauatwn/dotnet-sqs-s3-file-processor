@@ -41,14 +41,15 @@ public class ProcessDocumentUseCaseTests
         _jobRepositoryMock.Verify(x => x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
     }
     
-    [Fact(DisplayName = "Should early return and apply idempotency when job is not Pending")]
-    public async Task ExecuteAsync_ShouldReturnEarly_WhenJobIsNotPending()
+    [Fact(DisplayName = "Should early return and apply idempotency when job is Completed")]
+    public async Task ExecuteAsync_ShouldReturnEarly_WhenJobIsCompleted()
     {
         // Arrange
         Guid jobId = Guid.NewGuid();
         DocumentProcessJob job = new("test-idempotency.csv", "documents/test-idempotency.csv");
         
         job.MarkAsProcessing(); 
+        job.MarkAsCompleted(); 
 
         _jobRepositoryMock
             .Setup(x => x.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))

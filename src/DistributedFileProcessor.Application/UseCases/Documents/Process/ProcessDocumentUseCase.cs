@@ -24,7 +24,7 @@ public sealed partial class ProcessDocumentUseCase(
             return;
         }
         
-        if (job.Status != ProcessStatus.Pending)
+        if (job.Status == ProcessStatus.Completed)
         {
             LogJobAlreadyProcessed(logger, jobId, job.Status);
             return;
