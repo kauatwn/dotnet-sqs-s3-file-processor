@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-using Amazon.S3;
+﻿using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -18,19 +17,16 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
 {
     private readonly IServiceScope _scope = factory.Services.CreateScope();
 
-    [Fact(DisplayName = "Worker should process S3 Event via SQS, download file and insert records into DB")]
+    [Fact(DisplayName = "Worker should process S3 Event natively, download file and insert records into DB")]
     public async Task Worker_ShouldProcessMessage_AndCompleteJobSuccessfully()
     {
         // Arrange
         var dbContext = _scope.ServiceProvider.GetRequiredService<FileProcessorDbContext>();
         var s3Client = _scope.ServiceProvider.GetRequiredService<IAmazonS3>();
-        var sqsClient = _scope.ServiceProvider.GetRequiredService<IAmazonSQS>();
 
         const string bucketName = "integration-test-bucket";
         var jobId = Guid.NewGuid();
-
         string s3Key = $"documents/{jobId}-test.csv";
-        string queueUrl = factory.Services.GetRequiredService<IConfiguration>()["AWS:SQS:QueueUrl"]!;
 
         DocumentProcessJob job = new(jobId, "test.csv", s3Key);
         dbContext.DocumentProcessJobs.Add(job);
@@ -42,17 +38,13 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
                                   2023-01-02,200.75,Test2,ACC-2
                                   """;
 
+        // Act
         await s3Client.PutObjectAsync(new PutObjectRequest
         {
             BucketName = bucketName,
             Key = s3Key,
             ContentBody = csvContent
         }, TestContext.Current.CancellationToken);
-
-        string messageBody = CreateS3EventNotificationJson(bucketName, s3Key);
-
-        // Act
-        await sqsClient.SendMessageAsync(queueUrl, messageBody, TestContext.Current.CancellationToken);
 
         bool isProcessed = false;
         for (int i = 0; i < 20; i++)
@@ -62,7 +54,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
 
             if (currentJob is { Status: ProcessStatus.Failed })
             {
-                Assert.Fail($"O Worker falhou: {currentJob.FailureReason}");
+                Assert.Fail($"O Worker falhou de forma inesperada: {currentJob.FailureReason}");
             }
 
             if (currentJob is { Status: ProcessStatus.Completed })
@@ -75,7 +67,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
         }
 
         // Assert
-        Assert.True(isProcessed, "O Worker demorou demais para processar ou ignorou a mensagem.");
+        Assert.True(isProcessed, "O Worker demorou demais para processar ou a notificação do S3 falhou.");
         
         int insertedCount = dbContext.TransactionRecords.Count(x => x.JobId == jobId);
         Assert.Equal(2, insertedCount);
@@ -94,7 +86,6 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
         string s3Key = $"documents/{jobId}-invalid.csv";
 
         var config = factory.Services.GetRequiredService<IConfiguration>();
-        string queueUrl = config["AWS:SQS:QueueUrl"]!;
         string dlqName = config["AWS:SQS:DlqName"]!;
 
         GetQueueUrlResponse? dlqUrlResponse = await sqsClient.GetQueueUrlAsync(dlqName, TestContext.Current.CancellationToken);
@@ -104,6 +95,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
         dbContext.DocumentProcessJobs.Add(job);
         await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        // Act
         await s3Client.PutObjectAsync(new PutObjectRequest
         {
             BucketName = bucketName,
@@ -113,10 +105,6 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
                           1,2
                           """
         }, TestContext.Current.CancellationToken);
-
-        // Act
-        string messageBody = CreateS3EventNotificationJson(bucketName, s3Key);
-        await sqsClient.SendMessageAsync(queueUrl, messageBody, TestContext.Current.CancellationToken);
 
         bool jobMarkedAsFailed = false;
         for (int i = 0; i < 30; i++)
@@ -133,36 +121,20 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
             await Task.Delay(1000, TestContext.Current.CancellationToken);
         }
 
-        // Assert
-        Assert.True(jobMarkedAsFailed, "Job não foi marcado como Failed.");
+        // Assert 1: Garante que o domínio marcou o Job como Failed.
+        Assert.True(jobMarkedAsFailed, "Job não foi marcado como Failed no banco de dados.");
 
+        await Task.Delay(3000, TestContext.Current.CancellationToken);
+
+        // Assert 2: Valida se a mensagem finalmente caiu na DLQ
         ReceiveMessageResponse? dlqResponse = await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
         {
             QueueUrl = dlqUrl,
             MaxNumberOfMessages = 1,
-            WaitTimeSeconds = 1
+            WaitTimeSeconds = 2
         }, TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(dlqResponse.Messages);
-    }
-
-    private static string CreateS3EventNotificationJson(string bucketName, string s3Key)
-    {
-        var s3Event = new
-        {
-            Records = new[]
-            {
-                new
-                {
-                    s3 = new
-                    {
-                        bucket = new { name = bucketName },
-                        @object = new { key = s3Key }
-                    }
-                }
-            }
-        };
-
-        return JsonSerializer.Serialize(s3Event);
+        Assert.NotNull(dlqResponse);
+        Assert.True(dlqResponse.Messages != null && dlqResponse.Messages.Count > 0, "A mensagem nunca chegou na DLQ!");
     }
 }
