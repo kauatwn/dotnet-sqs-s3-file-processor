@@ -6,7 +6,6 @@ using DistributedFileProcessor.Domain.Entities;
 using DistributedFileProcessor.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Text;
 
 namespace DistributedFileProcessor.UnitTests.Application.UseCases.Documents.Upload;
 
@@ -15,70 +14,65 @@ public class UploadDocumentUseCaseTests
 {
     private readonly Mock<IFileStorageService> _fileStorageMock = new();
     private readonly Mock<IDocumentProcessJobRepository> _repositoryMock = new();
-    private readonly Mock<IMessagePublisher> _messagePublisherMock = new();
+
     private readonly ILogger<UploadDocumentUseCase> _logger = Mock.Of<ILogger<UploadDocumentUseCase>>();
 
     private readonly UploadDocumentUseCase _sut;
 
     public UploadDocumentUseCaseTests()
     {
-        _sut = new UploadDocumentUseCase(_fileStorageMock.Object, _repositoryMock.Object, _messagePublisherMock.Object, _logger);
+        _sut = new UploadDocumentUseCase(_fileStorageMock.Object, _repositoryMock.Object, _logger);
     }
 
-    [Fact(DisplayName = "Should upload file, save job and publish message successfully")]
+    [Fact(DisplayName = "Should generate pre-signed URL and save job successfully")]
     public async Task ExecuteAsync_ShouldProcessSuccessfully()
     {
         // Arrange
         const string fileName = "test-transactions.csv";
-        MemoryStream stream = new(Encoding.UTF8.GetBytes("fake csv content"));
-        UploadDocumentRequest request = new(fileName, stream);
-
-        string expectedS3Key = $"documents/{Guid.NewGuid()}-{fileName}";
+        const string expectedUrl = "https://s3.localstack.com/presigned-url";
+        var request = new UploadDocumentRequest(fileName);
 
         _fileStorageMock
-            .Setup(x => x.UploadFileAsync(fileName, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(expectedS3Key);
+            .Setup(x => x.GeneratePreSignedUploadUrlAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
+            .ReturnsAsync(expectedUrl);
 
         // Act
-        UploadDocumentResponse response = await _sut.ExecuteAsync(request, TestContext.Current.CancellationToken);
+        var response = await _sut.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
         Assert.NotNull(response);
         Assert.NotEqual(Guid.Empty, response.JobId);
-        Assert.Equal(expectedS3Key, response.S3ObjectKey);
+        Assert.Equal(expectedUrl, response.PreSignedUrl);
 
-        _fileStorageMock.Verify(x => x.UploadFileAsync(fileName, stream, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains(response.JobId.ToString(), response.S3ObjectKey);
+        Assert.Contains(fileName, response.S3ObjectKey);
+
+        _fileStorageMock.Verify(x => x.GeneratePreSignedUploadUrlAsync(response.S3ObjectKey, It.IsAny<TimeSpan>()), Times.Once);
 
         _repositoryMock.Verify(x => x.AddAsync(
-            It.Is<DocumentProcessJob>(j => j.FileName == fileName && j.S3ObjectKey == expectedS3Key),
+            It.Is<DocumentProcessJob>(j =>
+                j.Id == response.JobId &&
+                j.FileName == fileName &&
+                j.S3ObjectKey == response.S3ObjectKey),
             It.IsAny<CancellationToken>()), Times.Once);
-
-        _messagePublisherMock.Verify(x => x.PublishProcessJobAsync(response.JobId, It.IsAny<CancellationToken>()), Times.Once);
     }
-    
-    [Fact(DisplayName = "Should log and rethrow exception when upload fails")]
+
+    [Fact(DisplayName = "Should log and rethrow exception when URL generation fails")]
     public async Task ExecuteAsync_ShouldLogAndThrow_WhenExceptionOccurs()
     {
         // Arrange
-        const string fileName = "test-error.csv";
-        UploadDocumentRequest request = new(fileName, Stream.Null); 
+        UploadDocumentRequest request = new("error.csv");
 
         _fileStorageMock
-            .Setup(x => x.UploadFileAsync(fileName, It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Simulated AWS S3 failure"));
+            .Setup(x => x.GeneratePreSignedUploadUrlAsync(It.IsAny<string>(), It.IsAny<TimeSpan>()))
+            .ThrowsAsync(new Exception("S3 failure"));
 
         // Act
-        Task Act() => _sut.ExecuteAsync(request, TestContext.Current.CancellationToken);
+        Task<UploadDocumentResponse> Act() => _sut.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
-        Exception exception = await Assert.ThrowsAsync<Exception>(Act);
+        await Assert.ThrowsAsync<Exception>(Act);
 
-        Assert.Equal("Simulated AWS S3 failure", exception.Message);
-
-        _repositoryMock.Verify(x => 
-            x.AddAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
-            
-        _messagePublisherMock.Verify(x => 
-            x.PublishProcessJobAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        _repositoryMock.Verify(x => x.AddAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }
