@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
 using DistributedFileProcessor.Worker;
@@ -6,7 +5,7 @@ using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddSerilog((services, loggerConfiguration) => 
+builder.Services.AddSerilog((services, loggerConfiguration) =>
 {
     loggerConfiguration
         .ReadFrom.Configuration(builder.Configuration)
