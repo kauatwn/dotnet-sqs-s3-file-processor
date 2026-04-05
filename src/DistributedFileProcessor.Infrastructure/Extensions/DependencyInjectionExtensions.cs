@@ -59,7 +59,8 @@ public static class DependencyInjectionExtensions
             AmazonSQSConfig config = new()
             {
                 ServiceURL = localStackUrl,
-                AuthenticationRegion = "us-east-1"
+                AuthenticationRegion = "us-east-1",
+                UseHttp = true
             };
 
             return new AmazonSQSClient(credentials, config);
@@ -74,7 +75,8 @@ public static class DependencyInjectionExtensions
             {
                 ServiceURL = localStackUrl,
                 AuthenticationRegion = "us-east-1",
-                ForcePathStyle = true
+                ForcePathStyle = true,
+                UseHttp = true
             };
 
             return new AmazonS3Client(credentials, config);
