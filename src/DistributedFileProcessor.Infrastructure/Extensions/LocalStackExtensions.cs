@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Amazon.S3;
+using Amazon.S3.Model;
 using Amazon.S3.Util;
 using Amazon.SQS;
 using Amazon.SQS.Model;
@@ -28,7 +29,9 @@ public static partial class LocalStackExtensions
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<IAmazonSQS>>();
 
         await EnsureS3BucketAsync(s3Client, s3Options.BucketName, logger);
-        await EnsureSqsQueuesAsync(sqsClient, sqsOptions, logger);
+        string mainQueueArn = await EnsureSqsQueuesAsync(sqsClient, sqsOptions, logger);
+        
+        await ConfigureS3ToSqsNotificationsAsync(s3Client, s3Options.BucketName, mainQueueArn, logger);
     }
 
     private static async Task EnsureS3BucketAsync(IAmazonS3 s3Client, string bucketName, ILogger logger)
@@ -48,18 +51,20 @@ public static partial class LocalStackExtensions
         }
     }
 
-    private static async Task EnsureSqsQueuesAsync(IAmazonSQS sqsClient, SqsOptions options, ILogger logger)
+    private static async Task<string> EnsureSqsQueuesAsync(IAmazonSQS sqsClient, SqsOptions options, ILogger logger)
     {
         try
         {
             string dlqArn = await CreateDeadLetterQueueAsync(sqsClient, options.DlqName);
-            await CreateMainQueueAsync(sqsClient, options.QueueName, dlqArn);
+            string mainQueueArn = await CreateMainQueueAsync(sqsClient, options.QueueName, dlqArn);
 
             LogSqsQueuesLinked(logger, options.QueueName, options.DlqName);
+            return mainQueueArn;
         }
         catch (Exception ex)
         {
             LogSqsQueuesSetupFailed(logger, ex);
+            throw;
         }
     }
 
@@ -75,7 +80,7 @@ public static partial class LocalStackExtensions
         return dlqAttributes.QueueARN;
     }
 
-    private static async Task CreateMainQueueAsync(IAmazonSQS sqsClient, string mainQueueName, string dlqArn)
+    private static async Task<string> CreateMainQueueAsync(IAmazonSQS sqsClient, string mainQueueName, string dlqArn)
     {
         string redrivePolicyJson = JsonSerializer.Serialize(new
         {
@@ -92,7 +97,39 @@ public static partial class LocalStackExtensions
             }
         };
 
-        await sqsClient.CreateQueueAsync(createQueueRequest);
+        CreateQueueResponse createQueueResponse = await sqsClient.CreateQueueAsync(createQueueRequest);
+
+        GetQueueAttributesResponse mainQueueAttributes = await sqsClient.GetQueueAttributesAsync(
+            createQueueResponse.QueueUrl,
+            ["QueueArn"]);
+
+        return mainQueueAttributes.QueueARN;
+    }
+
+    private static async Task ConfigureS3ToSqsNotificationsAsync(IAmazonS3 s3Client, string bucketName, string queueArn, ILogger logger)
+    {
+        try
+        {
+            PutBucketNotificationRequest request = new()
+            {
+                BucketName = bucketName,
+                QueueConfigurations =
+                [
+                    new QueueConfiguration
+                    {
+                        Events = [EventType.ObjectCreatedAll],
+                        Queue = queueArn
+                    }
+                ]
+            };
+
+            await s3Client.PutBucketNotificationAsync(request);
+            logger.LogInformation("S3 Event Notifications successfully configured to send events to SQS.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "A failure occurred while setting up S3 Event Notifications.");
+        }
     }
 
     [LoggerMessage(LogLevel.Information, "S3 Bucket '{BucketName}' created successfully.")]
