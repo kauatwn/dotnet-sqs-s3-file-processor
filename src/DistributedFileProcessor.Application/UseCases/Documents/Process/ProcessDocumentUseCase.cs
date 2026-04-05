@@ -1,5 +1,6 @@
 ﻿using DistributedFileProcessor.Application.Interfaces;
 using DistributedFileProcessor.Domain.Entities;
+using DistributedFileProcessor.Domain.Enums;
 using DistributedFileProcessor.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +21,12 @@ public sealed partial class ProcessDocumentUseCase(
         if (job is null)
         {
             LogJobNotFound(logger, jobId);
+            return;
+        }
+        
+        if (job.Status != ProcessStatus.Pending)
+        {
+            LogJobAlreadyProcessed(logger, jobId, job.Status);
             return;
         }
 
@@ -69,6 +76,9 @@ public sealed partial class ProcessDocumentUseCase(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} not found in the database.")]
     static partial void LogJobNotFound(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
+    
+    [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId} skipped because it is not Pending. Current status: {Status}. Idempotency applied.")]
+    static partial void LogJobAlreadyProcessed(ILogger<ProcessDocumentUseCase> logger, Guid jobId, ProcessStatus status);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting processing for Job {JobId}.")]
     static partial void LogJobProcessingStarted(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
