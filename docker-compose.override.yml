@@ -4,14 +4,17 @@ services:
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.API/Dockerfile
+    extra_hosts:
+      - "localhost:host-gateway"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
-      - ASPNETCORE_HTTPS_PORTS=8081
       - Seq__ServerUrl=http://seq:80
+      - LocalStack__ServiceUrl=http://localhost:4566
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
+      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
     ports:
       - "8080:8080"
-      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,20 +22,20 @@ services:
         condition: service_healthy
       seq:
         condition: service_healthy
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/home/app/.aspnet/https:ro
-      - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https:ro
 
   distributedfileprocessor.worker:
     image: ${DOCKER_REGISTRY-}distributedfileprocessorworker
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.Worker/Dockerfile
+    extra_hosts:
+      - "localhost:host-gateway"
     environment:
       - DOTNET_ENVIRONMENT=Development
       - Seq__ServerUrl=http://seq:80
+      - LocalStack__ServiceUrl=http://localhost:4566
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
+      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,13 +81,14 @@ services:
       start_period: 5s
 
   localstack:
-    image: localstack/localstack:4.14.0
+    image: localstack/localstack:2026.3.0
     container_name: distributedfileprocessor-localstack
     ports:
-      - "127.0.0.1:4566:4566"
-      - "127.0.0.1:4510-4559:4510-4559"
+      - "4566:4566"
+      - "4510-4559:4510-4559"
     environment:
       - DEBUG=${DEBUG:-0}
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"

@@ -40,6 +40,34 @@ public class ProcessDocumentUseCaseTests
         _fileStorageMock.Verify(x => x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _jobRepositoryMock.Verify(x => x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+    
+    [Fact(DisplayName = "Should early return and apply idempotency when job is Completed")]
+    public async Task ExecuteAsync_ShouldReturnEarly_WhenJobIsCompleted()
+    {
+        // Arrange
+        Guid jobId = Guid.NewGuid();
+        DocumentProcessJob job = new("test-idempotency.csv", "documents/test-idempotency.csv");
+        
+        job.MarkAsProcessing(); 
+        job.MarkAsCompleted(); 
+
+        _jobRepositoryMock
+            .Setup(x => x.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        // Act
+        await _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
+
+        // Assert
+        _fileStorageMock.Verify(x => 
+            x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            
+        _jobRepositoryMock.Verify(x => 
+            x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
+            
+        _transactionRepositoryMock.Verify(x => 
+            x.BulkInsertAsync(It.IsAny<IEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
 
     [Fact(DisplayName = "Should change status to Failed and rethrow exception when parser fails")]
     public async Task ExecuteAsync_ShouldMarkAsFailedAndThrow_WhenExceptionOccurs()

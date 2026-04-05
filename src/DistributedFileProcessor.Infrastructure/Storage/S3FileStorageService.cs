@@ -56,9 +56,28 @@ public sealed partial class S3FileStorageService(
         return response.ResponseStream;
     }
 
+    public async Task<string> GeneratePreSignedUploadUrlAsync(string s3ObjectKey, TimeSpan expiration)
+    {
+        GetPreSignedUrlRequest request = new()
+        {
+            BucketName = _options.BucketName,
+            Key = s3ObjectKey,
+            Verb = HttpVerb.PUT,
+            Expires = DateTime.UtcNow.Add(expiration)
+        };
+
+        string url = await s3Client.GetPreSignedURLAsync(request);
+        LogPreSignedUrlGenerated(logger, s3ObjectKey, _options.BucketName, expiration.TotalMinutes);
+
+        return url;
+    }
+
     [LoggerMessage(LogLevel.Information, "File {ObjectKey} successfully uploaded to bucket {BucketName}.")]
     static partial void LogFileUploaded(ILogger<S3FileStorageService> logger, string objectKey, string bucketName);
 
     [LoggerMessage(LogLevel.Information, "File {ObjectKey} successfully downloaded from bucket {BucketName}.")]
     static partial void LogFileDownloaded(ILogger<S3FileStorageService> logger, string objectKey, string bucketName);
+    
+    [LoggerMessage(LogLevel.Information, "Pre-signed PUT URL generated safely for object {ObjectKey} in bucket {BucketName}. Expires in {ExpirationMinutes} minutes.")]
+    static partial void LogPreSignedUrlGenerated(ILogger<S3FileStorageService> logger, string objectKey, string bucketName, double expirationMinutes);
 }

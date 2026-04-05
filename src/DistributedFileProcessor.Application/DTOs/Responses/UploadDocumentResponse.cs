@@ -1,3 +1,5 @@
-﻿namespace DistributedFileProcessor.Application.DTOs.Responses;
+﻿using DistributedFileProcessor.Domain.Enums;
 
-public sealed record UploadDocumentResponse(Guid JobId, string S3ObjectKey, string Status);
+namespace DistributedFileProcessor.Application.DTOs.Responses;
+
+public sealed record UploadDocumentResponse(Guid JobId, string S3ObjectKey, string PreSignedUrl, ProcessStatus Status);

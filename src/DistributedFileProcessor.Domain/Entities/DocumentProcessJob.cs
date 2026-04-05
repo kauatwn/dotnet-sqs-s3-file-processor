@@ -34,6 +34,30 @@ public sealed class DocumentProcessJob
         Status = ProcessStatus.Pending;
         CreatedAt = DateTime.UtcNow;
     }
+    
+    public DocumentProcessJob(Guid id, string fileName, string s3ObjectKey)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new ArgumentException("Job ID must not be empty.", nameof(id));
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException("File name must not be empty.", nameof(fileName));
+        }
+
+        if (string.IsNullOrWhiteSpace(s3ObjectKey))
+        {
+            throw new ArgumentException("S3 object key must not be empty.", nameof(s3ObjectKey));
+        }
+
+        Id = id;
+        FileName = fileName;
+        S3ObjectKey = s3ObjectKey;
+        Status = ProcessStatus.Pending;
+        CreatedAt = DateTime.UtcNow;
+    }
 
     public void MarkAsProcessing()
     {
