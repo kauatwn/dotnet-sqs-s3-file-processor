@@ -28,8 +28,6 @@ public sealed partial class DocumentProcessingWorker(
                 LogSqsCommunicationFailed(logger, ex);
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
             }
-
-            await Task.Delay(1000, stoppingToken);
         }
     }
 
