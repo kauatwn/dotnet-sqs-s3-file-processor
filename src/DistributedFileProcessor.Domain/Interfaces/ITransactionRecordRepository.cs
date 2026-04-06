@@ -4,6 +4,6 @@ namespace DistributedFileProcessor.Domain.Interfaces;
 
 public interface ITransactionRecordRepository
 {
-    Task BulkInsertAsync(IEnumerable<TransactionRecord> transactions, CancellationToken cancellationToken = default);
+    Task<int> BulkInsertStreamAsync(IAsyncEnumerable<TransactionRecord> transactionsStream, CancellationToken cancellationToken = default);
     Task DeleteByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default);
 }
