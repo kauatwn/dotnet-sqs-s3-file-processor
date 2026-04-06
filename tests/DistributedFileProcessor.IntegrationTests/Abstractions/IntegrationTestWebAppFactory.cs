@@ -16,8 +16,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
         .WithPassword("postgres")
         .Build();
 
-    private readonly LocalStackContainer _localStackContainer = new LocalStackBuilder("localstack/localstack:2026.3.0")
-        .WithEnvironment("LOCALSTACK_ACKNOWLEDGE_ACCOUNT_REQUIREMENT", "1")
+    private readonly LocalStackContainer _localStackContainer = new LocalStackBuilder("localstack/localstack:4.14.0")
         .Build();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -39,7 +38,10 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
             });
         });
 
-        builder.ConfigureServices(services => { services.AddHostedService<DocumentProcessingWorker>(); });
+        builder.ConfigureServices(services =>
+        {
+            services.AddHostedService<DocumentProcessingWorker>();
+        });
     }
 
     public async ValueTask InitializeAsync()
