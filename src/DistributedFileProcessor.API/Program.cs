@@ -6,7 +6,7 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSerilog((services, loggerConfiguration) => 
+builder.Services.AddSerilog((_, loggerConfiguration) =>
 {
     loggerConfiguration
         .ReadFrom.Configuration(builder.Configuration)
@@ -22,10 +22,7 @@ builder.Services.AddSerilog((services, loggerConfiguration) =>
 });
 
 builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
-    });
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -33,11 +30,11 @@ builder.Services.AddApplication();
 
 var app = builder.Build();
 
-await app.EnsureLocalStackResourcesAsync();
-
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    await app.EnsureLocalStackResourcesAsync();
     await app.ApplyMigrationsAsync();
 }
 
