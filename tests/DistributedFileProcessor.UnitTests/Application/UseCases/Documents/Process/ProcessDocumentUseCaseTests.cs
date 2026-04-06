@@ -66,10 +66,10 @@ public class ProcessDocumentUseCaseTests
             x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
             
         _transactionRepositoryMock.Verify(x => 
-            x.BulkInsertAsync(It.IsAny<IEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Never);
+            x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Fact(DisplayName = "Should change status to Failed and rethrow exception when parser fails")]
+    [Fact(DisplayName = "Should change status to Failed and rethrow exception when parser or database fails")]
     public async Task ExecuteAsync_ShouldMarkAsFailedAndThrow_WhenExceptionOccurs()
     {
         // Arrange
@@ -83,10 +83,10 @@ public class ProcessDocumentUseCaseTests
         _fileStorageMock
             .Setup(x => x.DownloadFileAsync(job.S3ObjectKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream());
-
-        _fileParserMock
-            .Setup(x => x.ParseStreamAsync(It.IsAny<Stream>(), jobId, It.IsAny<CancellationToken>()))
-            .Throws(new Exception("Simulated parser failure"));
+        
+        _transactionRepositoryMock
+            .Setup(x => x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Simulated database/parsing failure"));
 
         // Act
         Task Act() => _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
@@ -98,8 +98,8 @@ public class ProcessDocumentUseCaseTests
         _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
     
-    [Fact(DisplayName = "Should process in batches and insert remainders successfully")]
-    public async Task ExecuteAsync_ShouldProcessInBatches_AndInsertRemainders()
+    [Fact(DisplayName = "Should delegate stream to repository and complete successfully")]
+    public async Task ExecuteAsync_ShouldDelegateStreamToRepository_AndCompleteSuccessfully()
     {
         // Arrange
         Guid jobId = Guid.NewGuid();
@@ -115,15 +115,22 @@ public class ProcessDocumentUseCaseTests
             .ReturnsAsync(fakeStream);
         
         int totalRecordsToSimulate = 5002;
+        var fakeStreamEnumerable = CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId);
+        
         _fileParserMock
             .Setup(x => x.ParseStreamAsync(It.IsAny<Stream>(), jobId, It.IsAny<CancellationToken>()))
-            .Returns(CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId));
+            .Returns(fakeStreamEnumerable);
+
+        _transactionRepositoryMock
+            .Setup(x => x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(totalRecordsToSimulate);
 
         // Act
         await _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
         
+        // Assert
         _transactionRepositoryMock.Verify(x => 
-            x.BulkInsertAsync(It.IsAny<IEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Once);
 
         Assert.Equal(ProcessStatus.Completed, job.Status);
         _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
