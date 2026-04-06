@@ -87,7 +87,6 @@ public static class DependencyInjectionExtensions
 
     private static void AddMessagingServices(IServiceCollection services)
     {
-        services.AddSingleton<IMessagePublisher, SqsMessagePublisher>();
         services.AddSingleton<IMessageConsumer, SqsMessageConsumer>();
     }
 

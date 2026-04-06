@@ -13,8 +13,6 @@ public sealed partial class ProcessDocumentUseCase(
     ITransactionRecordRepository transactionRepository,
     ILogger<ProcessDocumentUseCase> logger) : IProcessDocumentUseCase
 {
-    private const int BatchSize = 5000;
-
     public async Task ExecuteAsync(Guid jobId, CancellationToken cancellationToken = default)
     {
         DocumentProcessJob? job = await jobRepository.GetByIdAsync(jobId, cancellationToken);
@@ -26,7 +24,7 @@ public sealed partial class ProcessDocumentUseCase(
         
         if (job.Status == ProcessStatus.Completed)
         {
-            LogJobAlreadyProcessed(logger, jobId, job.Status);
+            LogJobAlreadyProcessed(logger, jobId);
             return;
         }
 
@@ -36,32 +34,17 @@ public sealed partial class ProcessDocumentUseCase(
             await jobRepository.UpdateAsync(job, cancellationToken);
             
             LogJobProcessingStarted(logger, jobId);
-            await transactionRepository.DeleteByJobIdAsync(jobId, cancellationToken);
-            await using Stream fileStream = await fileStorage.DownloadFileAsync(job.S3ObjectKey, cancellationToken);
-
-            List<TransactionRecord> currentBatch = new(BatchSize);
-            int totalProcessed = 0;
             
-            await foreach (TransactionRecord transaction in fileParser.ParseStreamAsync(fileStream, jobId, cancellationToken))
-            {
-                currentBatch.Add(transaction);
-
-                if (currentBatch.Count >= BatchSize)
-                {
-                    await transactionRepository.BulkInsertAsync(currentBatch, cancellationToken);
-                    totalProcessed += currentBatch.Count;
-                    currentBatch.Clear();
-                }
-            }
-
-            if (currentBatch.Count > 0)
-            {
-                await transactionRepository.BulkInsertAsync(currentBatch, cancellationToken);
-                totalProcessed += currentBatch.Count;
-            }
+            await transactionRepository.DeleteByJobIdAsync(jobId, cancellationToken);
+            
+            await using Stream fileStream = await fileStorage.DownloadFileAsync(job.S3ObjectKey, cancellationToken);
+            IAsyncEnumerable<TransactionRecord> transactionStream = fileParser.ParseStreamAsync(fileStream, jobId, cancellationToken);
+            
+            int totalProcessed = await transactionRepository.BulkInsertStreamAsync(transactionStream, cancellationToken);
 
             job.MarkAsCompleted();
             await jobRepository.UpdateAsync(job, cancellationToken);
+            
             LogJobProcessed(logger, jobId, totalProcessed);
         }
         catch (Exception ex)
@@ -77,8 +60,8 @@ public sealed partial class ProcessDocumentUseCase(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} not found in the database.")]
     static partial void LogJobNotFound(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
     
-    [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId} skipped because it is not Pending. Current status: {Status}. Idempotency applied.")]
-    static partial void LogJobAlreadyProcessed(ILogger<ProcessDocumentUseCase> logger, Guid jobId, ProcessStatus status);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId} skipped because it is already Completed. Idempotency applied.")]
+    static partial void LogJobAlreadyProcessed(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting processing for Job {JobId}.")]
     static partial void LogJobProcessingStarted(ILogger<ProcessDocumentUseCase> logger, Guid jobId);

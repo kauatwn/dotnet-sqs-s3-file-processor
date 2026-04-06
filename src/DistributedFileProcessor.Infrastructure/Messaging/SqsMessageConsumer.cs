@@ -21,9 +21,7 @@ public sealed partial class SqsMessageConsumer(
     
     private readonly SqsOptions _options = options.Value;
 
-    public async Task ReceiveMessagesAsync(
-        Func<Guid, CancellationToken, Task> processMessageAction,
-        CancellationToken cancellationToken = default)
+    public async Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAction, CancellationToken cancellationToken = default)
     {
         ReceiveMessageRequest request = new()
         {
@@ -43,7 +41,7 @@ public sealed partial class SqsMessageConsumer(
         {
             try
             {
-                if (TryExtractJobIdFromS3Event(message.Body, out Guid jobId))
+                if (TryExtractJobIdFromS3Event(message.Body, logger, out Guid jobId))
                 {
                     LogMessageProcessingStarted(logger, message.MessageId, jobId);
                     await processMessageAction(jobId, cancellationToken);
@@ -53,32 +51,18 @@ public sealed partial class SqsMessageConsumer(
                 }
                 else
                 {
-                    logger.LogWarning("Message {MessageId} skipped. It does not contain a valid S3 Event or JobId.", message.MessageId);
+                    LogMessageSkipped(logger, message.MessageId);
                     await sqsClient.DeleteMessageAsync(_options.QueueUrl, message.ReceiptHandle, cancellationToken);
                 }
             }
             catch (Exception ex)
             {
                 LogMessageProcessingFailed(logger, ex, message.MessageId);
-
-                try
-                {
-                    await sqsClient.ChangeMessageVisibilityAsync(
-                        _options.QueueUrl,
-                        message.ReceiptHandle,
-                        0,
-                        cancellationToken);
-                }
-                catch (Exception visibilityEx)
-                {
-                    logger.LogWarning(visibilityEx, "Failed to change message visibility for {MessageId}",
-                        message.MessageId);
-                }
             }
         }
     }
 
-    private static bool TryExtractJobIdFromS3Event(string messageBody, out Guid jobId)
+    private static bool TryExtractJobIdFromS3Event(string messageBody, ILogger logger, out Guid jobId)
     {
         jobId = Guid.Empty;
         try
@@ -86,7 +70,7 @@ public sealed partial class SqsMessageConsumer(
             var s3Event = JsonSerializer.Deserialize<S3Event>(messageBody, JsonOptions);
             S3Event.S3EventNotificationRecord? record = s3Event?.Records?.FirstOrDefault();
 
-            if (record?.S3?.Object?.Key != null)
+            if (record?.S3?.Object?.Key is not null)
             {
                 string fullKey = WebUtility.UrlDecode(record.S3.Object.Key);
                 string fileName = Path.GetFileName(fullKey);
@@ -97,20 +81,26 @@ public sealed partial class SqsMessageConsumer(
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Falha no parse do evento S3
+            LogS3EventParseFailed(logger, ex);
         }
 
         return false;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Processing started for SQS message {MessageId} associated with Job {JobId}.")]
-    static partial void LogMessageProcessingStarted(ILogger<SqsMessageConsumer> logger, string messageId, Guid jobId);
+    static partial void LogMessageProcessingStarted(ILogger logger, string messageId, Guid jobId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Message {MessageId} successfully deleted from SQS (ACK).")]
-    static partial void LogMessageDeleted(ILogger<SqsMessageConsumer> logger, string messageId);
+    static partial void LogMessageDeleted(ILogger logger, string messageId);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Processing failed for SQS message {MessageId}. Visibility timeout reset to 0 (NACK).")]
-    static partial void LogMessageProcessingFailed(ILogger<SqsMessageConsumer> logger, Exception ex, string messageId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Message {MessageId} skipped. It does not contain a valid S3 Event or JobId.")]
+    static partial void LogMessageSkipped(ILogger logger, string messageId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to parse S3 Event from message body. The payload might be invalid.")]
+    static partial void LogS3EventParseFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Processing failed for SQS message {MessageId}. The SQS service will retry after the visibility timeout.")]
+    static partial void LogMessageProcessingFailed(ILogger logger, Exception ex, string messageId);
 }

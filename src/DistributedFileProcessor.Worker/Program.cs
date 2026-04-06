@@ -5,7 +5,7 @@ using Serilog;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.Services.AddSerilog((services, loggerConfiguration) =>
+builder.Services.AddSerilog((_, loggerConfiguration) =>
 {
     loggerConfiguration
         .ReadFrom.Configuration(builder.Configuration)
@@ -27,6 +27,9 @@ builder.Services.AddHostedService<DocumentProcessingWorker>();
 
 var host = builder.Build();
 
-await host.EnsureLocalStackResourcesAsync();
+if (host.Services.GetRequiredService<IHostEnvironment>().IsDevelopment())
+{
+    await host.EnsureLocalStackResourcesAsync();
+}
 
 await host.RunAsync();

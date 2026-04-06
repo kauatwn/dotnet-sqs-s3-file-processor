@@ -86,7 +86,17 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
         string s3Key = $"documents/{jobId}-invalid.csv";
 
         var config = factory.Services.GetRequiredService<IConfiguration>();
+        string queueUrl = config["AWS:SQS:QueueUrl"]!;
         string dlqName = config["AWS:SQS:DlqName"]!;
+
+        // Hack de visibilidade para acelerar os retries do Worker
+        await sqsClient.SetQueueAttributesAsync(new SetQueueAttributesRequest
+        {
+            QueueUrl = queueUrl,
+            Attributes = new Dictionary<string, string> { { "VisibilityTimeout", "0" } }
+        }, TestContext.Current.CancellationToken);
+
+        await Task.Delay(TimeSpan.FromSeconds(6), TestContext.Current.CancellationToken);
 
         GetQueueUrlResponse? dlqUrlResponse = await sqsClient.GetQueueUrlAsync(dlqName, TestContext.Current.CancellationToken);
         string dlqUrl = dlqUrlResponse.QueueUrl;
@@ -106,8 +116,9 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
                           """
         }, TestContext.Current.CancellationToken);
 
+        // Assert 1: Polling rápido no banco de dados para garantir que falhou a primeira vez
         bool jobMarkedAsFailed = false;
-        for (int i = 0; i < 30; i++)
+        for (int i = 0; i < 20; i++)
         {
             _scope.ServiceProvider.GetRequiredService<FileProcessorDbContext>().ChangeTracker.Clear();
             DocumentProcessJob? currentJob = await dbContext.DocumentProcessJobs.FindAsync([jobId], TestContext.Current.CancellationToken);
@@ -117,24 +128,31 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
                 jobMarkedAsFailed = true;
                 break;
             }
-
+            
             await Task.Delay(1000, TestContext.Current.CancellationToken);
         }
 
-        // Assert 1: Garante que o domínio marcou o Job como Failed.
         Assert.True(jobMarkedAsFailed, "Job não foi marcado como Failed no banco de dados.");
 
-        await Task.Delay(3000, TestContext.Current.CancellationToken);
-
-        // Assert 2: Valida se a mensagem finalmente caiu na DLQ
-        ReceiveMessageResponse? dlqResponse = await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
+        // Assert 2: O LOOP DE POLLING NA DLQ
+        // Ele vai tentar ler a DLQ até 15 vezes (com blocos de 2 segundos de Long Polling) = 30 segundos de tolerância.
+        bool messageReachedDlq = false;
+        for (int i = 0; i < 15; i++)
         {
-            QueueUrl = dlqUrl,
-            MaxNumberOfMessages = 1,
-            WaitTimeSeconds = 2
-        }, TestContext.Current.CancellationToken);
+            ReceiveMessageResponse? dlqResponse = await sqsClient.ReceiveMessageAsync(new ReceiveMessageRequest
+            {
+                QueueUrl = dlqUrl,
+                MaxNumberOfMessages = 1,
+                WaitTimeSeconds = 2 
+            }, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(dlqResponse);
-        Assert.True(dlqResponse.Messages != null && dlqResponse.Messages.Count > 0, "A mensagem nunca chegou na DLQ!");
+            if (dlqResponse?.Messages is { Count: > 0 })
+            {
+                messageReachedDlq = true;
+                break;
+            }
+        }
+
+        Assert.True(messageReachedDlq, "A mensagem falhou as retentativas, mas nunca chegou na DLQ!");
     }
 }
