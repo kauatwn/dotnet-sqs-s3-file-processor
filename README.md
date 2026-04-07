@@ -42,7 +42,38 @@ docker compose up -d
 
 _Seq (Logs) will be accessible at `http://localhost:5341`._
 
-### 4. Execute Tests
+### 4. Simulating a Full Upload
+
+To test the system's high-throughput capabilities, a dedicated C# tool is provided to generate a massive CSV file dynamically.
+
+**Step 4.1: Generate the Payload (No .NET SDK required)**
+You can use Docker to run the generator script isolated from your host machine. The project uses the native .NET 10 C# scripting feature to execute the file without a project structure. This will create a 1 Million records CSV file (`transactions_1M.csv`, approx. 55MB) in your root directory:
+
+```bash
+docker run --rm -v "$(pwd):/workspace" -w /workspace/tools mcr.microsoft.com/dotnet/sdk:10.0 dotnet run CsvGenerator.cs
+```
+
+_The generated file will have the following structure:_
+
+```csv
+Date,Amount,Description,AccountId
+2023-05-12,4321.50,Simulated_Transaction_1,ACC-84732
+2023-11-03,12.99,Simulated_Transaction_2,ACC-10294
+```
+
+**Step 4.2: Request a Pre-signed URL**
+Perform a `POST` request to the API to get temporary upload permissions:
+
+- **Endpoint:** `POST http://localhost:8080/api/documents/upload-url`
+- **Body:** `json { "fileName": "transactions_1M.csv" }`
+
+**Step 4.3: Direct Upload to S3 (LocalStack)**
+Use the returned `url` to perform a `PUT` request via Postman or cURL.
+Attach the `transactions_1M.csv` file as a binary payload. _(No specific `Content-Type` header is required for this sandbox)_.
+
+_Once the upload is complete, check the Seq Dashboard (`http://localhost:5341`) to watch the Background Worker ingest the 1,000,000 records into PostgreSQL in real-time._
+
+### 5. Execute Tests
 
 To validate the domain logic, infrastructure parsing, and distributed flows:
 
@@ -75,6 +106,7 @@ This repository prioritizes **scalability** and **asynchronous processing**, uti
 
 Instead of the API acting as a proxy for file bytes (Double-Hop), the system uses **Pre-signed URLs** to allow direct, secure uploads to S3.
 
+![Architecture diagram illustrating the Pre-signed URL upload and Event-Driven Choreography patterns](./docs/architecture.png)
 _Figure 1: Event-driven choreography flow from pre-signed URL request to database ingestion._
 
 1. **Request Upload (API):** The client requests temporary upload permission. The API generates a **Pre-signed URL**.
@@ -105,30 +137,14 @@ Distributed systems are prone to network failures. The application handles this 
 
 This project is an engineering sandbox focused on cloud-native integration. While the architecture solves classic issues like "Dual-Write" and "Double-Hop", it introduces specific pragmatic trade-offs:
 
-> [!WARNING]
-> **Trade-off 1: Orphan Jobs (Stale State)**
->
-> The API creates a `Pending` job in the database _before_ the client uploads the file to S3 via the Pre-signed URL. If the client abandons the upload, the S3 Event is never triggered, leaving the job `Pending` forever in the database.
->
-> _Production Mitigation Strategies:_
-> 1. **Sweeper Worker:** Implement a background cleanup job (e.g., using `BackgroundService` or Quartz.NET) to mark jobs as `Failed` if they remain `Pending` for > 24 hours.
-> 2. **Ephemeral State:** Store the initial `Pending` state in **Redis** with a Time-To-Live (TTL) instead of PostgreSQL. If the file is processed, persist it to the relational database; otherwise, the Redis key simply expires, leaving no stale data.
+- **Orphan Jobs (Stale State):** The API creates a `Pending` job in the database _before_ the client uploads the file to S3 via the Pre-signed URL. If the client abandons the upload, the S3 Event is never triggered, leaving the job `Pending` forever. _Production Mitigation:_ Implement a background cleanup job (Sweeper Worker) or store the initial state in Redis with a Time-To-Live (TTL).
+- **Loss of Immediate Edge Validation:** By bypassing the Web API for the actual file upload, we lose the ability to validate the file content synchronously. A corrupted file will only be detected asynchronously when the background worker attempts to parse it.
+- **High-Throughput vs. Physical Insertion Order:** To achieve ingestion rates of over 100k+ records/sec, the `EFCore.BulkExtensions` library is configured with `PreserveInsertOrder = false`. This trades physical database insertion order for extreme speed, relying entirely on PostgreSQL's ACID properties and business logic dates for ordering.
 
----
-
-> [!WARNING]
-> **Trade-off 2: Loss of Immediate Edge Validation**
+> [!IMPORTANT]
+> **Architectural Decision: Idempotency & At-Least-Once Delivery**
 >
-> By bypassing the Web API for the actual file upload, we lose the ability to validate the file content (e.g., empty file checks, internal structure) synchronously. A corrupted file will only be detected asynchronously when the background worker attempts to parse it.
->
-> _Production Mitigation:_ Rely on strict S3 Pre-signed URL constraints and implement robust quarantine mechanisms in the Background Worker for invalid payloads.
-
----
-
-> [!NOTE]
-> **Resolved: At-Least-Once Delivery & Idempotency**
->
-> SQS and S3 Event Notifications guarantee _At-Least-Once_ delivery, meaning duplicate messages can occur. This system handles this natively: the `ProcessDocumentUseCase` implements an **idempotency check**, gracefully ignoring duplicate messages if the Job is no longer in a `Pending` state.
+> SQS and S3 Event Notifications guarantee _At-Least-Once_ delivery, meaning duplicate messages can occur. This system handles this natively: the `ProcessDocumentUseCase` implements an **idempotency check**, gracefully ignoring duplicate messages if the Job is already marked as `Completed`.
 
 ### 5. Comprehensive Testing Strategy
 
@@ -136,7 +152,7 @@ The project adopts a strategy focused on **Cloud Integration** and **Isolation**
 
 - **Unit Tests:** Verify business rules and CSV parsing logic in isolation.
 - **Integration Tests:** Verify the entire distributed pipeline.
-  - **Technology:** Uses **Testcontainers** to orchestrate real instances of PostgreSQL and **LocalStack**.
+  - **Technology:** Uses **[Testcontainers](https://testcontainers.com/)** to orchestrate real instances of PostgreSQL and **[LocalStack](https://www.localstack.cloud/)**.
   - **Worker Validation:** The test suite injects the Worker into the `WebApplicationFactory`, allowing end-to-end validation (API -> DB -> S3 -> SQS -> Worker -> DB) within a single test execution.
 
 ### 6. CI/CD & Quality
