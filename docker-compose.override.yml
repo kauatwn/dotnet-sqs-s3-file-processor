@@ -99,6 +99,15 @@ services:
       retries: 10
       start_period: 15s
 
+  csv-generator:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    container_name: distributedfileprocessor-csv-gen
+    volumes:
+      - .:/workspace
+    working_dir: /workspace/tools
+    profiles: ["tools"]
+    command: ["dotnet", "run", "CsvGenerator.cs"]
+
 volumes:
   postgres_data:
   seq_data:
