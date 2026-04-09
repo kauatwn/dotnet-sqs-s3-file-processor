@@ -47,10 +47,10 @@ _Seq (Logs) will be accessible at `http://localhost:5341`._
 To test the system's high-throughput capabilities, a dedicated C# tool is provided to generate a massive CSV file dynamically.
 
 **Step 4.1: Generate the Payload (No .NET SDK required)**
-You can use Docker to run the generator script isolated from your host machine. The project uses the native .NET 10 C# scripting feature to execute the file without a project structure. This will create a 1 Million records CSV file (`transactions_1M.csv`, approx. 55MB) in your root directory:
+You can use Docker Compose to run the generator script isolated from your host machine. This will create a 1 Million records CSV file (`transactions_1M.csv`, approx. 55MB) in your `output` directory:
 
 ```bash
-docker run --rm -v "$(pwd):/workspace" -w /workspace/tools mcr.microsoft.com/dotnet/sdk:10.0 dotnet run CsvGenerator.cs
+docker compose run --rm csv-generator
 ```
 
 _The generated file will have the following structure:_
