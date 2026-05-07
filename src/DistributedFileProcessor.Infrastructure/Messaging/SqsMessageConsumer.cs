@@ -8,6 +8,8 @@ using DistributedFileProcessor.Application.Interfaces;
 using DistributedFileProcessor.Infrastructure.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly;
+using Polly.Registry;
 
 namespace DistributedFileProcessor.Infrastructure.Messaging;
 
@@ -15,13 +17,15 @@ namespace DistributedFileProcessor.Infrastructure.Messaging;
 public sealed partial class SqsMessageConsumer(
     IAmazonSQS sqsClient,
     IOptions<SqsOptions> options,
+    ResiliencePipelineProvider<string> pipelineProvider,
     ILogger<SqsMessageConsumer> logger) : IMessageConsumer
 {
     private static readonly JsonSerializerOptions JsonOptions = JsonSerializerOptions.Web;
     
     private readonly SqsOptions _options = options.Value;
+    private readonly ResiliencePipeline _sqsPipeline = pipelineProvider.GetPipeline(PipelineKeys.Sqs);
 
-    public async Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAction, CancellationToken cancellationToken = default)
+    public async Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAsync, CancellationToken cancellationToken = default)
     {
         ReceiveMessageRequest request = new()
         {
@@ -30,7 +34,7 @@ public sealed partial class SqsMessageConsumer(
             WaitTimeSeconds = 5
         };
 
-        ReceiveMessageResponse? response = await sqsClient.ReceiveMessageAsync(request, cancellationToken);
+        ReceiveMessageResponse? response = await _sqsPipeline.ExecuteAsync(async ct => await sqsClient.ReceiveMessageAsync(request, ct), cancellationToken);
 
         if (response?.Messages is null || response.Messages.Count == 0)
         {
@@ -44,15 +48,15 @@ public sealed partial class SqsMessageConsumer(
                 if (TryExtractJobIdFromS3Event(message.Body, logger, out Guid jobId))
                 {
                     LogMessageProcessingStarted(logger, message.MessageId, jobId);
-                    await processMessageAction(jobId, cancellationToken);
+                    await processMessageAsync(jobId, cancellationToken);
 
-                    await sqsClient.DeleteMessageAsync(_options.QueueUrl, message.ReceiptHandle, cancellationToken);
+                    await _sqsPipeline.ExecuteAsync(async ct => await sqsClient.DeleteMessageAsync(_options.QueueUrl, message.ReceiptHandle, ct), cancellationToken);
                     LogMessageDeleted(logger, message.MessageId);
                 }
                 else
                 {
                     LogMessageSkipped(logger, message.MessageId);
-                    await sqsClient.DeleteMessageAsync(_options.QueueUrl, message.ReceiptHandle, cancellationToken);
+                    await _sqsPipeline.ExecuteAsync(async ct => await sqsClient.DeleteMessageAsync(_options.QueueUrl, message.ReceiptHandle, ct), cancellationToken);
                 }
             }
             catch (Exception ex)
@@ -67,7 +71,7 @@ public sealed partial class SqsMessageConsumer(
         jobId = Guid.Empty;
         try
         {
-            var s3Event = JsonSerializer.Deserialize<S3Event>(messageBody, JsonOptions);
+            S3Event? s3Event = JsonSerializer.Deserialize<S3Event>(messageBody, JsonOptions);
             S3Event.S3EventNotificationRecord? record = s3Event?.Records?.FirstOrDefault();
 
             if (record?.S3?.Object?.Key is not null)

@@ -2,5 +2,5 @@
 
 public interface IMessageConsumer
 {
-    Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAction, CancellationToken cancellationToken = default);
+    Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAsync, CancellationToken cancellationToken = default);
 }
