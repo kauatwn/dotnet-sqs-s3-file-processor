@@ -20,27 +20,6 @@ public sealed partial class S3FileStorageService(
     private readonly S3Options _options = options.Value;
     private readonly ResiliencePipeline _retryPipeline = pipelineProvider.GetPipeline("S3Pipeline");
 
-    public async Task<string> UploadFileAsync(
-        string fileName,
-        Stream fileStream,
-        CancellationToken cancellationToken = default)
-    {
-        string objectKey = $"documents/{Guid.NewGuid()}-{fileName}";
-
-        PutObjectRequest request = new()
-        {
-            BucketName = _options.BucketName,
-            Key = objectKey,
-            InputStream = fileStream,
-            AutoCloseStream = false
-        };
-
-        await _retryPipeline.ExecuteAsync(async ct => await s3Client.PutObjectAsync(request, ct), cancellationToken);
-        LogFileUploaded(logger, objectKey, _options.BucketName);
-
-        return objectKey;
-    }
-
     public async Task<Stream> DownloadFileAsync(string s3ObjectKey, CancellationToken cancellationToken = default)
     {
         GetObjectRequest request = new()
@@ -49,8 +28,7 @@ public sealed partial class S3FileStorageService(
             Key = s3ObjectKey
         };
 
-        GetObjectResponse response = await _retryPipeline.ExecuteAsync(async ct =>
-            await s3Client.GetObjectAsync(request, ct), cancellationToken);
+        GetObjectResponse response = await _retryPipeline.ExecuteAsync(async ct => await s3Client.GetObjectAsync(request, ct), cancellationToken);
         LogFileDownloaded(logger, s3ObjectKey, _options.BucketName);
 
         return response.ResponseStream;
@@ -72,12 +50,9 @@ public sealed partial class S3FileStorageService(
         return url;
     }
 
-    [LoggerMessage(LogLevel.Information, "File {ObjectKey} successfully uploaded to bucket {BucketName}.")]
-    static partial void LogFileUploaded(ILogger<S3FileStorageService> logger, string objectKey, string bucketName);
-
     [LoggerMessage(LogLevel.Information, "File {ObjectKey} successfully downloaded from bucket {BucketName}.")]
     static partial void LogFileDownloaded(ILogger<S3FileStorageService> logger, string objectKey, string bucketName);
-    
+
     [LoggerMessage(LogLevel.Information, "Pre-signed PUT URL generated safely for object {ObjectKey} in bucket {BucketName}. Expires in {ExpirationMinutes} minutes.")]
     static partial void LogPreSignedUrlGenerated(ILogger<S3FileStorageService> logger, string objectKey, string bucketName, double expirationMinutes);
 }
