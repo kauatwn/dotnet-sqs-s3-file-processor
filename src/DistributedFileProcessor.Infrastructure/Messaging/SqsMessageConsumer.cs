@@ -23,7 +23,7 @@ public sealed partial class SqsMessageConsumer(
     private static readonly JsonSerializerOptions JsonOptions = JsonSerializerOptions.Web;
     
     private readonly SqsOptions _options = options.Value;
-    private readonly ResiliencePipeline _sqsPipeline = pipelineProvider.GetPipeline("SqsPipeline");
+    private readonly ResiliencePipeline _sqsPipeline = pipelineProvider.GetPipeline(PipelineKeys.Sqs);
 
     public async Task ReceiveMessagesAsync(Func<Guid, CancellationToken, Task> processMessageAsync, CancellationToken cancellationToken = default)
     {

@@ -18,7 +18,7 @@ public sealed partial class S3FileStorageService(
     ILogger<S3FileStorageService> logger) : IFileStorageService
 {
     private readonly S3Options _options = options.Value;
-    private readonly ResiliencePipeline _retryPipeline = pipelineProvider.GetPipeline("S3Pipeline");
+    private readonly ResiliencePipeline _retryPipeline = pipelineProvider.GetPipeline(PipelineKeys.S3);
 
     public async Task<Stream> DownloadFileAsync(string s3ObjectKey, CancellationToken cancellationToken = default)
     {

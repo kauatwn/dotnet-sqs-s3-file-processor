@@ -113,7 +113,7 @@ public static class DependencyInjectionExtensions
 
     private static void AddResiliencePolicies(IServiceCollection services)
     {
-        services.AddResiliencePipeline("S3Pipeline", builder =>
+        services.AddResiliencePipeline(PipelineKeys.S3, builder =>
         {
             builder.AddTimeout(TimeSpan.FromSeconds(15));
             builder.AddRetry(new RetryStrategyOptions
@@ -128,7 +128,7 @@ public static class DependencyInjectionExtensions
             builder.AddTimeout(TimeSpan.FromSeconds(5));
         });
 
-        services.AddResiliencePipeline("SqsPipeline", builder =>
+        services.AddResiliencePipeline(PipelineKeys.Sqs, builder =>
         {
             builder.AddTimeout(TimeSpan.FromSeconds(5));
 
