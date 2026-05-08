@@ -11,7 +11,7 @@ namespace DistributedFileProcessor.API.Controllers;
 [ApiController]
 public sealed partial class DocumentsController(ILogger<DocumentsController> logger) : ControllerBase
 {
-    [HttpPost("upload-url")]
+    [HttpPost("upload")]
     [ProducesResponseType<DocumentUploadUrlResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> RequestUploadUrl(IUploadDocumentUseCase useCase, UploadDocumentRequest request, CancellationToken cancellationToken)
