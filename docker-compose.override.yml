@@ -10,9 +10,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localhost:4566
+      - LocalStack__ServiceUrl=http://localstack:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
     ports:
       - "8080:8080"
     depends_on:
@@ -33,9 +33,9 @@ services:
     environment:
       - DOTNET_ENVIRONMENT=Development
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localhost:4566
+      - LocalStack__ServiceUrl=http://localstack:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +93,8 @@ services:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
     healthcheck:
-      test: ["CMD", "curl", "-s", "-f", "http://localhost:4566/_localstack/health"]
+      test:
+        ["CMD", "curl", "-s", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -108,7 +109,18 @@ services:
     profiles: ["tools"]
     command: ["dotnet", "run", "CsvGenerator.cs"]
 
+  k6:
+    image: grafana/k6:latest
+    container_name: distributedfileprocessor-k6
+    profiles: ["loadtest"]
+    volumes:
+      - ./k6:/scripts
+      - ./tools/output:/data
+    working_dir: /scripts
+    command: ["run", "upload-documents-stress.js"]
+    depends_on:
+      - distributedfileprocessor.api
+
 volumes:
   postgres_data:
   seq_data:
-  

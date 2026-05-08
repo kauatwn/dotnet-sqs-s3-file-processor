@@ -18,14 +18,14 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
     private const string BaseUrl = "/api/documents";
     private readonly HttpClient _client = factory.CreateClient();
 
-    [Fact(DisplayName = $"POST {BaseUrl}/upload-url should return 201 Created and Pre-signed URL")]
+    [Fact(DisplayName = $"POST {BaseUrl}/upload should return 201 Created and Pre-signed URL")]
     public async Task RequestUploadUrl_ShouldReturnCreated_WhenRequestIsValid()
     {
         // Arrange
         UploadDocumentRequest request = new("integration-test.csv");
 
         // Act
-        HttpResponseMessage response = await _client.PostAsJsonAsync($"{BaseUrl}/upload-url", request, TestContext.Current.CancellationToken);
+        HttpResponseMessage response = await _client.PostAsJsonAsync($"{BaseUrl}/upload", request, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -34,7 +34,7 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
 
         Assert.NotNull(result);
         Assert.NotEqual(Guid.Empty, result.JobId);
-        Assert.NotEmpty(result.PreSignedUrl);
+        Assert.NotEmpty(result.Url);
         Assert.Contains("integration-test.csv", result.S3ObjectKey);
         Assert.Equal(nameof(ProcessStatus.Pending), result.Status);
 
@@ -43,14 +43,14 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
         Assert.Contains($"{BaseUrl}/{result.JobId}", locationHeader, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact(DisplayName = $"POST {BaseUrl}/upload-url should return 400 Bad Request when FileName is empty")]
+    [Fact(DisplayName = $"POST {BaseUrl}/upload should return 400 Bad Request when FileName is empty")]
     public async Task RequestUploadUrl_ShouldReturnBadRequest_WhenFileNameIsEmpty()
     {
         // Arrange
         UploadDocumentRequest request = new(string.Empty);
 
         // Act
-        HttpResponseMessage response = await _client.PostAsJsonAsync($"{BaseUrl}/upload-url", request, TestContext.Current.CancellationToken);
+        HttpResponseMessage response = await _client.PostAsJsonAsync($"{BaseUrl}/upload", request, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

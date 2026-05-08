@@ -47,7 +47,7 @@ _Seq (Logs) will be accessible at `http://localhost:5341`._
 To test the system's high-throughput capabilities, a dedicated C# tool is provided to generate a massive CSV file dynamically.
 
 **Step 4.1: Generate the Payload (No .NET SDK required)**
-You can use Docker Compose to run the generator script isolated from your host machine. This will create a 1 Million records CSV file (`transactions_1M.csv`, approx. 55MB) in your `output` directory:
+You can use Docker Compose to run the generator script isolated from your host machine. This will create a 100 thousand records CSV file (`payload-100k.csv`, approx. 6MB) in your `output` directory:
 
 ```bash
 docker compose run --rm csv-generator
@@ -64,14 +64,14 @@ Date,Amount,Description,AccountId
 **Step 4.2: Request a Pre-signed URL**
 Perform a `POST` request to the API to get temporary upload permissions:
 
-- **Endpoint:** `POST http://localhost:8080/api/documents/upload-url`
-- **Body:** `json { "fileName": "transactions_1M.csv" }`
+- **Endpoint:** `POST http://localhost:8080/api/documents/upload`
+- **Body:** `json { "fileName": "payload-100k.csv" }`
 
 **Step 4.3: Direct Upload to S3 (LocalStack)**
 Use the returned `url` to perform a `PUT` request via Postman or cURL.
-Attach the `transactions_1M.csv` file as a binary payload. _(No specific `Content-Type` header is required for this sandbox)_.
+Attach the `payload-100k.csv` file as a binary payload. _(No specific `Content-Type` header is required for this sandbox)_.
 
-_Once the upload is complete, check the Seq Dashboard (`http://localhost:5341`) to watch the Background Worker ingest the 1,000,000 records into PostgreSQL in real-time._
+_Once the upload is complete, check the Seq Dashboard (`http://localhost:5341`) to watch the Background Worker ingest the 100,000 records into PostgreSQL in real-time._
 
 ### 5. Execute Tests
 
@@ -155,7 +155,17 @@ The project adopts a strategy focused on **Cloud Integration** and **Isolation**
   - **Technology:** Uses **[Testcontainers](https://testcontainers.com/)** to orchestrate real instances of PostgreSQL and **[LocalStack](https://www.localstack.cloud/)**.
   - **Worker Validation:** The test suite injects the Worker into the `WebApplicationFactory`, allowing end-to-end validation (API -> DB -> S3 -> SQS -> Worker -> DB) within a single test execution.
 
-### 6. CI/CD & Quality
+### 6. Performance & Load Testing
+
+To validate the system's backpressure capabilities and the database's resilience under high concurrency, a load testing suite using **[k6](https://k6.io/)** is included.
+
+Run the stress test via Docker Compose to simulate multiple concurrent clients performing heavy file uploads (requires the 100k payload to be generated first):
+
+```bash
+docker compose run --rm k6
+```
+
+### 7. CI/CD & Quality
 
 The project includes a **GitHub Actions** workflow that ensures quality on every push:
 
