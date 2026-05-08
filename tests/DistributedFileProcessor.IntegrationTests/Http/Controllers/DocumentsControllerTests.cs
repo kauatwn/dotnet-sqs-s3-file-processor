@@ -34,7 +34,7 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
 
         Assert.NotNull(result);
         Assert.NotEqual(Guid.Empty, result.JobId);
-        Assert.NotEmpty(result.PreSignedUrl);
+        Assert.NotEmpty(result.Url);
         Assert.Contains("integration-test.csv", result.S3ObjectKey);
         Assert.Equal(nameof(ProcessStatus.Pending), result.Status);
 
