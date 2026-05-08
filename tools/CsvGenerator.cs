@@ -4,9 +4,9 @@ using System.Text;
 Console.WriteLine("🚀 Starting CSV Generation...");
 
 Directory.CreateDirectory("output");
-string path = Path.Combine("output", "transactions_1M.csv");
+string path = Path.Combine("output", "payload-100k.csv");
 
-const int recordCount = 1_000_000;
+const int recordCount = 100_000;
 Random random = Random.Shared;
 
 using StreamWriter writer = new(path, append: false, Encoding.UTF8, bufferSize: 128 * 1024);
