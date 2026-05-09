@@ -118,11 +118,11 @@ public static partial class LocalStackExtensions
             };
 
             await s3Client.PutBucketNotificationAsync(request);
-            logger.LogInformation("S3 Event Notifications successfully configured to send events to SQS.");
+            LogS3NotificationsConfigured(logger);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "A failure occurred while setting up S3 Event Notifications.");
+            LogS3NotificationsSetupFailed(logger, ex);
         }
     }
 
@@ -137,4 +137,10 @@ public static partial class LocalStackExtensions
 
     [LoggerMessage(LogLevel.Warning, "A failure occurred while setting up the SQS Queues.")]
     static partial void LogSqsQueuesSetupFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(LogLevel.Information, "S3 Event Notifications successfully configured to send events to SQS.")]
+    static partial void LogS3NotificationsConfigured(ILogger logger);
+
+    [LoggerMessage(LogLevel.Warning, "A failure occurred while setting up S3 Event Notifications.")]
+    static partial void LogS3NotificationsSetupFailed(ILogger logger, Exception ex);
 }
