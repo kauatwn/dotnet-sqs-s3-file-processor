@@ -71,11 +71,7 @@ public static partial class LocalStackExtensions
     private static async Task<string> CreateDeadLetterQueueAsync(IAmazonSQS sqsClient, string dlqName)
     {
         CreateQueueResponse createDlqResponse = await sqsClient.CreateQueueAsync(dlqName);
-
-        // Busca o "CPF" (ARN) da fila recém-criada
-        GetQueueAttributesResponse dlqAttributes = await sqsClient.GetQueueAttributesAsync(
-            createDlqResponse.QueueUrl,
-            ["QueueArn"]);
+        GetQueueAttributesResponse dlqAttributes = await sqsClient.GetQueueAttributesAsync(createDlqResponse.QueueUrl, ["QueueArn"]);
 
         return dlqAttributes.QueueARN;
     }
@@ -93,15 +89,13 @@ public static partial class LocalStackExtensions
             QueueName = mainQueueName,
             Attributes = new Dictionary<string, string>
             {
-                { "RedrivePolicy", redrivePolicyJson }
+                { "RedrivePolicy", redrivePolicyJson },
+                { "VisibilityTimeout", "60" }
             }
         };
 
         CreateQueueResponse createQueueResponse = await sqsClient.CreateQueueAsync(createQueueRequest);
-
-        GetQueueAttributesResponse mainQueueAttributes = await sqsClient.GetQueueAttributesAsync(
-            createQueueResponse.QueueUrl,
-            ["QueueArn"]);
+        GetQueueAttributesResponse mainQueueAttributes = await sqsClient.GetQueueAttributesAsync(createQueueResponse.QueueUrl, ["QueueArn"]);
 
         return mainQueueAttributes.QueueARN;
     }
