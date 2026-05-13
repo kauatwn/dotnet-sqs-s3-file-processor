@@ -10,9 +10,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localstack:4566
+      - LocalStack__ServiceUrl=http://localhost:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
     ports:
       - "8080:8080"
     depends_on:
@@ -33,9 +33,9 @@ services:
     environment:
       - DOTNET_ENVIRONMENT=Development
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localstack:4566
+      - LocalStack__ServiceUrl=http://localhost:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,6 +113,8 @@ services:
     image: grafana/k6:latest
     container_name: distributedfileprocessor-k6
     profiles: ["loadtest"]
+    extra_hosts:
+      - "localhost:host-gateway"
     volumes:
       - ./k6:/scripts
       - ./tools/output:/data
