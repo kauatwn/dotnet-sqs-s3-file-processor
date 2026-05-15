@@ -25,7 +25,7 @@ public static class DependencyInjectionExtensions
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         AddOptions(services, configuration);
-        AddAwsServices(services, configuration);
+        AddAwsServices(services);
         AddPersistenceServices(services, configuration);
         AddResiliencePolicies(services);
 
@@ -47,15 +47,15 @@ public static class DependencyInjectionExtensions
             .ValidateOnStart();
     }
 
-    private static void AddAwsServices(IServiceCollection services, IConfiguration configuration)
+    private static void AddAwsServices(IServiceCollection services)
     {
         BasicAWSCredentials credentials = new(accessKey: "test", secretKey: "test");
 
-        string localStackUrl = configuration.GetValue<string>("LocalStack:ServiceUrl")
-            ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
-
-        services.AddSingleton<IAmazonSQS>(_ =>
+        services.AddSingleton<IAmazonSQS>(sp =>
         {
+            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
+                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
+
             AmazonSQSConfig config = new()
             {
                 ServiceURL = localStackUrl,
@@ -66,8 +66,11 @@ public static class DependencyInjectionExtensions
             return new AmazonSQSClient(credentials, config);
         });
 
-        services.AddSingleton<IAmazonS3>(_ =>
+        services.AddSingleton<IAmazonS3>(sp =>
         {
+            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
+                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
+
             AmazonS3Config config = new()
             {
                 ServiceURL = localStackUrl,
@@ -88,13 +91,13 @@ public static class DependencyInjectionExtensions
         services.AddDbContext<FileProcessorDbContext>(options =>
         {
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsqlOptions =>
-                {
-                    npgsqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 5,
-                        maxRetryDelay: TimeSpan.FromSeconds(10),
-                        errorCodesToAdd: null);
-                })
-                .UseSnakeCaseNamingConvention();
+            {
+                npgsqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorCodesToAdd: null);
+            })
+            .UseSnakeCaseNamingConvention();
         });
 
         services.AddScoped<IDocumentProcessJobRepository, DocumentProcessJobRepository>();
