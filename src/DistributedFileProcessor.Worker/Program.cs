@@ -3,7 +3,7 @@ using DistributedFileProcessor.Infrastructure.Extensions;
 using DistributedFileProcessor.Worker;
 using Serilog;
 
-var builder = Host.CreateApplicationBuilder(args);
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 builder.Services.AddSerilog((_, loggerConfiguration) =>
 {
@@ -14,6 +14,7 @@ builder.Services.AddSerilog((_, loggerConfiguration) =>
         .WriteTo.Console();
 
     string? seqServerUrl = builder.Configuration["Seq:ServerUrl"];
+    
     if (!string.IsNullOrWhiteSpace(seqServerUrl))
     {
         loggerConfiguration.WriteTo.Seq(seqServerUrl);
@@ -25,7 +26,7 @@ builder.Services.AddApplication();
 
 builder.Services.AddHostedService<DocumentProcessingWorker>();
 
-var host = builder.Build();
+IHost host = builder.Build();
 
 if (host.Services.GetRequiredService<IHostEnvironment>().IsDevelopment())
 {
