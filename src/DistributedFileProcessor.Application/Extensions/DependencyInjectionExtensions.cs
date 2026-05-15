@@ -11,10 +11,15 @@ public static class DependencyInjectionExtensions
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
+        AddUseCases(services);
+
+        return services;
+    }
+
+    private static void AddUseCases(IServiceCollection services)
+    {
         services.AddScoped<IUploadDocumentUseCase, UploadDocumentUseCase>();
         services.AddScoped<IProcessDocumentUseCase, ProcessDocumentUseCase>();
         services.AddScoped<IGetDocumentStatusUseCase, GetDocumentStatusUseCase>();
-
-        return services;
     }
 }

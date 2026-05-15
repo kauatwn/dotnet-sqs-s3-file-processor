@@ -24,17 +24,17 @@ public static class DependencyInjectionExtensions
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        AddConfiguration(services, configuration);
+        AddOptions(services, configuration);
         AddAwsServices(services);
-        AddMessagingServices(services);
-        AddPersistence(services, configuration);
-        AddParsingServices(services);
+        AddPersistenceServices(services, configuration);
         AddResiliencePolicies(services);
+
+        services.AddTransient<ITransactionFileParser, CsvTransactionFileParser>();
 
         return services;
     }
 
-    private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
+    private static void AddOptions(IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<SqsOptions>()
             .Bind(configuration.GetSection(SqsOptions.SectionName))
@@ -54,7 +54,7 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<IAmazonSQS>(sp =>
         {
             string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
+                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
 
             AmazonSQSConfig config = new()
             {
@@ -69,7 +69,7 @@ public static class DependencyInjectionExtensions
         services.AddSingleton<IAmazonS3>(sp =>
         {
             string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
+                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
 
             AmazonS3Config config = new()
             {
@@ -83,16 +83,13 @@ public static class DependencyInjectionExtensions
         });
 
         services.AddSingleton<IFileStorageService, S3FileStorageService>();
-    }
-
-    private static void AddMessagingServices(IServiceCollection services)
-    {
         services.AddSingleton<IMessageConsumer, SqsMessageConsumer>();
     }
 
-    private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
+    private static void AddPersistenceServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<FileProcessorDbContext>(options =>
+        {
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsqlOptions =>
             {
                 npgsqlOptions.EnableRetryOnFailure(
@@ -100,15 +97,11 @@ public static class DependencyInjectionExtensions
                     maxRetryDelay: TimeSpan.FromSeconds(10),
                     errorCodesToAdd: null);
             })
-            .UseSnakeCaseNamingConvention());
+            .UseSnakeCaseNamingConvention();
+        });
 
         services.AddScoped<IDocumentProcessJobRepository, DocumentProcessJobRepository>();
         services.AddScoped<ITransactionRecordRepository, TransactionRecordRepository>();
-    }
-
-    private static void AddParsingServices(IServiceCollection services)
-    {
-        services.AddTransient<ITransactionFileParser, CsvTransactionFileParser>();
     }
 
     private static void AddResiliencePolicies(IServiceCollection services)
@@ -118,7 +111,8 @@ public static class DependencyInjectionExtensions
             builder.AddTimeout(TimeSpan.FromSeconds(15));
             builder.AddRetry(new RetryStrategyOptions
             {
-                ShouldHandle = new PredicateBuilder().Handle<AmazonS3Exception>(),
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<AmazonS3Exception>(),
                 MaxRetryAttempts = 3,
                 Delay = TimeSpan.FromSeconds(2),
                 BackoffType = DelayBackoffType.Exponential,
@@ -131,7 +125,6 @@ public static class DependencyInjectionExtensions
         services.AddResiliencePipeline(PipelineKeys.Sqs, builder =>
         {
             builder.AddTimeout(TimeSpan.FromSeconds(5));
-
             builder.AddRetry(new RetryStrategyOptions
             {
                 ShouldHandle = new PredicateBuilder()

@@ -1,10 +1,9 @@
 using System.Text.Json.Serialization;
-using DistributedFileProcessor.API.Extensions;
 using DistributedFileProcessor.Application.Extensions;
 using DistributedFileProcessor.Infrastructure.Extensions;
 using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSerilog((_, loggerConfiguration) =>
 {
@@ -15,6 +14,7 @@ builder.Services.AddSerilog((_, loggerConfiguration) =>
         .WriteTo.Console();
 
     string? seqServerUrl = builder.Configuration["Seq:ServerUrl"];
+
     if (!string.IsNullOrWhiteSpace(seqServerUrl))
     {
         loggerConfiguration.WriteTo.Seq(seqServerUrl);
@@ -28,7 +28,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
