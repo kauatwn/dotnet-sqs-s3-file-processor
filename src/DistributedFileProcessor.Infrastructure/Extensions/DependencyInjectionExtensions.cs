@@ -24,17 +24,17 @@ public static class DependencyInjectionExtensions
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        AddConfiguration(services, configuration);
-        AddAwsServices(services);
-        AddMessagingServices(services);
-        AddPersistence(services, configuration);
-        AddParsingServices(services);
+        AddOptions(services, configuration);
+        AddAwsServices(services, configuration);
+        AddPersistenceServices(services, configuration);
         AddResiliencePolicies(services);
+
+        services.AddTransient<ITransactionFileParser, CsvTransactionFileParser>();
 
         return services;
     }
 
-    private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
+    private static void AddOptions(IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<SqsOptions>()
             .Bind(configuration.GetSection(SqsOptions.SectionName))
@@ -47,15 +47,15 @@ public static class DependencyInjectionExtensions
             .ValidateOnStart();
     }
 
-    private static void AddAwsServices(IServiceCollection services)
+    private static void AddAwsServices(IServiceCollection services, IConfiguration configuration)
     {
         BasicAWSCredentials credentials = new(accessKey: "test", secretKey: "test");
 
-        services.AddSingleton<IAmazonSQS>(sp =>
-        {
-            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
+        string localStackUrl = configuration.GetValue<string>("LocalStack:ServiceUrl")
+            ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
 
+        services.AddSingleton<IAmazonSQS>(_ =>
+        {
             AmazonSQSConfig config = new()
             {
                 ServiceURL = localStackUrl,
@@ -66,11 +66,8 @@ public static class DependencyInjectionExtensions
             return new AmazonSQSClient(credentials, config);
         });
 
-        services.AddSingleton<IAmazonS3>(sp =>
+        services.AddSingleton<IAmazonS3>(_ =>
         {
-            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required but was not found.");
-
             AmazonS3Config config = new()
             {
                 ServiceURL = localStackUrl,
@@ -83,32 +80,25 @@ public static class DependencyInjectionExtensions
         });
 
         services.AddSingleton<IFileStorageService, S3FileStorageService>();
-    }
-
-    private static void AddMessagingServices(IServiceCollection services)
-    {
         services.AddSingleton<IMessageConsumer, SqsMessageConsumer>();
     }
 
-    private static void AddPersistence(IServiceCollection services, IConfiguration configuration)
+    private static void AddPersistenceServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<FileProcessorDbContext>(options =>
+        {
             options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"), npgsqlOptions =>
-            {
-                npgsqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 5,
-                    maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
-            })
-            .UseSnakeCaseNamingConvention());
+                {
+                    npgsqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 5,
+                        maxRetryDelay: TimeSpan.FromSeconds(10),
+                        errorCodesToAdd: null);
+                })
+                .UseSnakeCaseNamingConvention();
+        });
 
         services.AddScoped<IDocumentProcessJobRepository, DocumentProcessJobRepository>();
         services.AddScoped<ITransactionRecordRepository, TransactionRecordRepository>();
-    }
-
-    private static void AddParsingServices(IServiceCollection services)
-    {
-        services.AddTransient<ITransactionFileParser, CsvTransactionFileParser>();
     }
 
     private static void AddResiliencePolicies(IServiceCollection services)
@@ -118,7 +108,8 @@ public static class DependencyInjectionExtensions
             builder.AddTimeout(TimeSpan.FromSeconds(15));
             builder.AddRetry(new RetryStrategyOptions
             {
-                ShouldHandle = new PredicateBuilder().Handle<AmazonS3Exception>(),
+                ShouldHandle = new PredicateBuilder()
+                    .Handle<AmazonS3Exception>(),
                 MaxRetryAttempts = 3,
                 Delay = TimeSpan.FromSeconds(2),
                 BackoffType = DelayBackoffType.Exponential,
@@ -131,7 +122,6 @@ public static class DependencyInjectionExtensions
         services.AddResiliencePipeline(PipelineKeys.Sqs, builder =>
         {
             builder.AddTimeout(TimeSpan.FromSeconds(5));
-
             builder.AddRetry(new RetryStrategyOptions
             {
                 ShouldHandle = new PredicateBuilder()
