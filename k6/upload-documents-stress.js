@@ -27,7 +27,13 @@ export default function () {
   });
 
   if (isSuccess) {
-    const uploadUrl = response.json("url");
+    let uploadUrl = response.json("url");
+
+    // Corrige o mapeamento de rede interna do Docker substituindo o host local
+    // pelo nome do container/serviço mapeado no docker-compose.
+    uploadUrl = uploadUrl
+      .replace("localhost:4566", "localstack:4566")
+      .replace("127.0.0.1:4566", "localstack:4566");
 
     const s3Res = http.put(uploadUrl, payload, {
       headers: { "Content-Type": "text/csv" },
