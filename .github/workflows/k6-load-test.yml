@@ -21,6 +21,9 @@ jobs:
       - name: Wait for Services Initialization
         run: sleep 20
 
+      - name: Generate CSV Payload
+        run: docker compose run --rm csv-generator
+
       - name: Run k6 and Stream to Grafana Cloud
         env:
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
