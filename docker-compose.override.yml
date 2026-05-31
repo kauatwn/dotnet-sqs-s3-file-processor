@@ -88,8 +88,7 @@ services:
       - "4510-4559:4510-4559"
     environment:
       - DEBUG=${DEBUG:-0}
-      - ACTIVATE_PRO=0
-      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
+      - LOCALSTACK_AUTH_TOKEN
     volumes:
       - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
