@@ -1,0 +1,36 @@
+name: k6 Load Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  load-test:
+    name: Execute k6 Load Test with Cloud Streaming
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Start Infrastructure (LocalStack, Postgres, API, Worker)
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+
+      - name: Wait for Services Initialization
+        run: sleep 20
+
+      - name: Run k6 and Stream to Grafana Cloud
+        env:
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
+        run: |
+          docker compose --profile loadtest run --rm \
+            -e K6_CLOUD_TOKEN=$K6_CLOUD_TOKEN \
+            -e K6_CLOUD_STACK_ID=$K6_CLOUD_STACK_ID \
+            k6 cloud run --local-execution /scripts/upload-documents-stress.js
+
+      - name: Tear Down Infrastructure
+        if: always()
+        run: docker compose down -v
