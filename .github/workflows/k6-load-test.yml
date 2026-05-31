@@ -2,7 +2,7 @@ name: k6 Load Test
 
 on:
   workflow_run:
-    workflows: [".NET Build and Test"]
+    workflows: ["CI (Build, Test, Analyze & Docker)"]
     types:
       - completed
 
