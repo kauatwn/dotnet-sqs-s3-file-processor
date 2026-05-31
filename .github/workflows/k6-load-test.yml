@@ -13,7 +13,9 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
-      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+      K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+      K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
+      K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
 
     steps:
       - name: Checkout Code
@@ -33,12 +35,10 @@ jobs:
         run: docker compose run --rm csv-generator
 
       - name: Run k6 and Stream to Grafana Cloud
-        env:
-          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
-          K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
         run: |
           docker compose --profile loadtest run --rm \
             -e K6_CLOUD_TOKEN=$K6_CLOUD_TOKEN \
+            -e K6_CLOUD_PROJECT_ID=$K6_CLOUD_PROJECT_ID \
             -e K6_CLOUD_STACK_ID=$K6_CLOUD_STACK_ID \
             k6 cloud run --local-execution /scripts/upload-documents-stress.js
 
