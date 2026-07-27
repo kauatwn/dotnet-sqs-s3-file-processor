@@ -30,7 +30,15 @@ jobs:
             up -d --build
 
       - name: Wait for Services Initialization
-        run: sleep 40
+        run: sleep 50
+
+      - name: Warm-up API (Bypass .NET Cold Start)
+        run: |
+          echo "Warming up the API..."
+          curl -sS -o /dev/null -w "HTTP Status: %{http_code}\n" -X POST http://localhost:8080/api/documents/upload \
+            -H "Content-Type: application/json" \
+            -d '{"fileName": "warmup-dummy-request.csv"}'
+          echo "Warm-up complete!"
 
       - name: Generate CSV Payload
         run: docker compose run --rm csv-generator
