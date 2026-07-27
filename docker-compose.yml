@@ -1,12 +1,12 @@
 services:
   distributedfileprocessor.api:
-    image: ${DOCKER_REGISTRY-}distributedfileprocessorapi
+    image: distributedfileprocessorapi
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.API/Dockerfile
 
   distributedfileprocessor.worker:
-    image: ${DOCKER_REGISTRY-}distributedfileprocessorworker
+    image: distributedfileprocessorworker
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.Worker/Dockerfile

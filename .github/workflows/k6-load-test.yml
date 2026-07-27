@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
       K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
       K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
       K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
@@ -26,7 +27,7 @@ jobs:
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.override.yml \
-            up -d
+            up -d --build
 
       - name: Wait for Services Initialization
         run: sleep 40
