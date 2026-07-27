@@ -1,6 +1,6 @@
 services:
   distributedfileprocessor.api:
-    image: ${DOCKER_REGISTRY-}distributedfileprocessorapi
+    image: distributedfileprocessorapi
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.API/Dockerfile
@@ -24,7 +24,7 @@ services:
         condition: service_healthy
 
   distributedfileprocessor.worker:
-    image: ${DOCKER_REGISTRY-}distributedfileprocessorworker
+    image: distributedfileprocessorworker
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.Worker/Dockerfile
@@ -81,17 +81,19 @@ services:
       start_period: 5s
 
   localstack:
-    image: localstack/localstack:2026.3.0
+    image: localstack/localstack-pro:2026.06.0
     container_name: distributedfileprocessor-localstack
     ports:
-      - "4566:4566"
-      - "4510-4559:4510-4559"
+      - '127.0.0.1:4566:4566'
+      - '127.0.0.1:4510-4559:4510-4559'
+      - '127.0.0.1:443:443'
     environment:
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?}
       - DEBUG=${DEBUG:-0}
-      - LOCALSTACK_AUTH_TOKEN
+      - PERSISTENCE=${PERSISTENCE:-0}
     volumes:
-      - "${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack"
-      - "/var/run/docker.sock:/var/run/docker.sock"
+      - '${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack'
+      - '/var/run/docker.sock:/var/run/docker.sock'
     healthcheck:
       test:
         ["CMD", "curl", "-s", "-f", "http://localhost:4566/_localstack/health"]
