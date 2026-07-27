@@ -1,14 +1,14 @@
 name: k6 Load Test
 
 on:
-  workflow_run:
-    workflows: ["CI (Build, Test, Analyze & Docker)"]
-    types:
-      - completed
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+    types: [opened, synchronize, reopened]
 
 jobs:
   k6-load-test:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     name: Execute k6 Load Test with Cloud Streaming
     runs-on: ubuntu-24.04
 
