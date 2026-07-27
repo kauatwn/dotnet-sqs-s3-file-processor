@@ -4,15 +4,13 @@ services:
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.API/Dockerfile
-    extra_hosts:
-      - "localhost:host-gateway"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localhost:4566
+      - LocalStack__ServiceUrl=http://localstack:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
     ports:
       - "8080:8080"
     depends_on:
@@ -28,14 +26,12 @@ services:
     build:
       context: .
       dockerfile: src/DistributedFileProcessor.Worker/Dockerfile
-    extra_hosts:
-      - "localhost:host-gateway"
     environment:
       - DOTNET_ENVIRONMENT=Development
       - Seq__ServerUrl=http://seq:80
-      - LocalStack__ServiceUrl=http://localhost:4566
+      - LocalStack__ServiceUrl=http://localstack:4566
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fileprocessor_db;Username=postgres;Password=postgres
-      - AWS__SQS__QueueUrl=http://localhost:4566/000000000000/document-processing-queue
+      - AWS__SQS__QueueUrl=http://localstack:4566/000000000000/document-processing-queue
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,9 +80,9 @@ services:
     image: localstack/localstack-pro:2026.06.0
     container_name: distributedfileprocessor-localstack
     ports:
-      - '127.0.0.1:4566:4566'
-      - '127.0.0.1:4510-4559:4510-4559'
-      - '127.0.0.1:443:443'
+      - '4566:4566'
+      - '4510-4559:4510-4559'
+      - '443:443'
     environment:
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?}
       - DEBUG=${DEBUG:-0}
