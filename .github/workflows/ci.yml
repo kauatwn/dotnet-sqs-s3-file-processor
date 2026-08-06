@@ -1,0 +1,112 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  build-and-test:
+    name: Code Validation, Quality & Docker Check
+    runs-on: ubuntu-24.04
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      IMAGE_TAG: ${{ github.sha }}
+      COVERAGE_ARGS: '--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: 17
+          distribution: "temurin"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
+      - name: Install SonarQube Cloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ runner.temp }}/scanner
+          dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}/scanner
+
+      - name: Restore dependencies
+        run: dotnet restore DistributedFileProcessor.slnx
+
+      - name: Begin SonarQube Cloud Analysis
+        run: |
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner begin \
+          /k:"kauatwn_DistributedFileProcessor" \
+          /o:"kauatwn" \
+          /d:sonar.token="$SONAR_TOKEN" \
+          /d:sonar.host.url="https://sonarcloud.io" \
+          /d:sonar.projectBaseDir="${{ github.workspace }}" \
+          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+          /d:sonar.coverage.exclusions="**Program.cs,**/Configurations/**,**/Migrations/**,**/k6/**"
+
+      - name: Build Solution
+        run: dotnet build DistributedFileProcessor.slnx --no-restore --configuration Release
+
+      - name: Run Unit Tests
+        run: dotnet test DistributedFileProcessor.slnx --no-build --configuration Release --filter "Category=Unit" ${{ env.COVERAGE_ARGS }}
+
+      - name: Run Integration Tests
+        run: dotnet test DistributedFileProcessor.slnx --no-build --configuration Release --filter "Category=Integration" ${{ env.COVERAGE_ARGS }}
+
+      - name: End SonarQube Cloud Analysis
+        run: ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          driver-opts: network=host
+
+      - name: Docker Build Check - API (Dry Run)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: src/DistributedFileProcessor.API/Dockerfile
+          push: false
+          tags: fileprocessor-api:${{ env.IMAGE_TAG }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=api-build
+          cache-to: type=gha,mode=max,scope=api-build
+
+      - name: Docker Build Check - Worker (Dry Run)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: src/DistributedFileProcessor.Worker/Dockerfile
+          push: false
+          tags: fileprocessor-worker:${{ env.IMAGE_TAG }}
+          platforms: linux/amd64
+          cache-from: type=gha,scope=worker-build
+          cache-to: type=gha,mode=max,scope=worker-build
