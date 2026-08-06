@@ -107,7 +107,7 @@ module "ecs" {
     desired_count  = var.api_task_config.desired_count
     container_port = var.api_task_config.container_port
     environment_vars = {
-      "ASPNETCORE_ENVIRONMENT"               = "Production"
+      "ASPNETCORE_ENVIRONMENT"               = "Development"
       "ASPNETCORE_HTTP_PORTS"                = tostring(var.api_task_config.container_port)
       "ConnectionStrings__DefaultConnection" = module.database.connection_string
       "AWS__SQS__QueueUrl"                   = module.messaging.queue_url
@@ -122,7 +122,7 @@ module "ecs" {
     memory        = var.worker_task_config.memory
     desired_count = var.worker_task_config.desired_count
     environment_vars = {
-      "DOTNET_ENVIRONMENT"                   = "Production"
+      "DOTNET_ENVIRONMENT"                   = "Development"
       "ConnectionStrings__DefaultConnection" = module.database.connection_string
       "AWS__SQS__QueueUrl"                   = module.messaging.queue_url
       "AWS__S3__BucketName"                  = module.storage.bucket_id
