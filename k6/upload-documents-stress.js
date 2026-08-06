@@ -17,7 +17,7 @@ export const options = {
   },
 };
 
-const BASE_URL = "http://distributedfileprocessor.api:8080";
+const BASE_URL = __ENV.BASE_URL || "http://distributedfileprocessor.api:8080";
 
 export default function () {
   const apiRes = http.post(
@@ -40,9 +40,13 @@ export default function () {
   if (isSuccess) {
     let uploadUrl = apiRes.json("url");
 
-    uploadUrl = uploadUrl
-      .replace("localhost:4566", "localstack:4566")
-      .replace("127.0.0.1:4566", "localstack:4566");
+    // Se estiver rodando contra o LocalStack em container Docker, redireciona o host do localhost/127.0.0.1
+    if (uploadUrl.includes("localhost:4566") || uploadUrl.includes("127.0.0.1:4566")) {
+      const s3Host = __ENV.S3_HOST || "localstack:4566";
+      uploadUrl = uploadUrl
+        .replace("localhost:4566", s3Host)
+        .replace("127.0.0.1:4566", s3Host);
+    }
 
     const s3Res = http.put(uploadUrl, payload, {
       headers: { "Content-Type": "text/csv" },
