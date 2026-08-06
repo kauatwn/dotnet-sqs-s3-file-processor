@@ -10,7 +10,4 @@
     <Project Path="tests/DistributedFileProcessor.IntegrationTests/DistributedFileProcessor.IntegrationTests.csproj" />
     <Project Path="tests/DistributedFileProcessor.UnitTests/DistributedFileProcessor.UnitTests.csproj" />
   </Folder>
-  <Project Path="docker-compose.dcproj">
-    <Build />
-  </Project>
 </Solution>
