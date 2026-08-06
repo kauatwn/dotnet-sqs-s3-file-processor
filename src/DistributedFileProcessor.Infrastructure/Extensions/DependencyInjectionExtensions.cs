@@ -1,4 +1,3 @@
-﻿using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.SQS;
 using DistributedFileProcessor.Application.Interfaces;
@@ -25,7 +24,7 @@ public static class DependencyInjectionExtensions
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         AddOptions(services, configuration);
-        AddAwsServices(services);
+        AddAwsServices(services, configuration);
         AddPersistenceServices(services, configuration);
         AddResiliencePolicies(services);
 
@@ -47,40 +46,11 @@ public static class DependencyInjectionExtensions
             .ValidateOnStart();
     }
 
-    private static void AddAwsServices(IServiceCollection services)
+    private static void AddAwsServices(IServiceCollection services, IConfiguration configuration)
     {
-        BasicAWSCredentials credentials = new(accessKey: "test", secretKey: "test");
-
-        services.AddSingleton<IAmazonSQS>(sp =>
-        {
-            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
-
-            AmazonSQSConfig config = new()
-            {
-                ServiceURL = localStackUrl,
-                AuthenticationRegion = "us-east-1",
-                UseHttp = true
-            };
-
-            return new AmazonSQSClient(credentials, config);
-        });
-
-        services.AddSingleton<IAmazonS3>(sp =>
-        {
-            string localStackUrl = sp.GetRequiredService<IConfiguration>().GetValue<string>("LocalStack:ServiceUrl")
-                ?? throw new InvalidOperationException("The configuration 'LocalStack:ServiceUrl' is required.");
-
-            AmazonS3Config config = new()
-            {
-                ServiceURL = localStackUrl,
-                AuthenticationRegion = "us-east-1",
-                ForcePathStyle = true,
-                UseHttp = true
-            };
-
-            return new AmazonS3Client(credentials, config);
-        });
+        services.AddDefaultAWSOptions(configuration.GetAWSOptions());
+        services.AddAWSService<IAmazonSQS>();
+        services.AddAWSService<IAmazonS3>();
 
         services.AddSingleton<IFileStorageService, S3FileStorageService>();
         services.AddSingleton<IMessageConsumer, SqsMessageConsumer>();
