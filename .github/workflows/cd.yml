@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout code
+      - name: Checkout code 🛎️
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Start LocalStack 🐳
@@ -38,16 +38,24 @@ jobs:
 
       - name: Terraform Init 🚀
         working-directory: infra/environments/dev
-        run: terraform init -upgrade
+        run: terraform init
 
-      - name: Terraform Apply (Target ECR Repositories) 📦
+      - name: Terraform Validate ✅
+        working-directory: infra/environments/dev
+        run: terraform validate
+
+      - name: Terraform Plan (Target ECR) 📋
         working-directory: infra/environments/dev
         run: |
-          terraform apply \
+          terraform plan \
             -target="module.ecr_api.aws_ecr_repository.this" \
             -target="module.ecr_worker.aws_ecr_repository.this" \
             -var="localstack_endpoint=${{ env.LOCALSTACK_ENDPOINT }}" \
-            -auto-approve
+            -out=tfplan-ecr
+
+      - name: Terraform Apply (Target ECR) 🏗️
+        working-directory: infra/environments/dev
+        run: terraform apply -input=false tfplan-ecr
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -78,17 +86,23 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=worker-build
 
-      - name: Terraform Apply (Full Infrastructure) 🏗️
+      - name: Terraform Plan (Full Infrastructure) 📋
         working-directory: infra/environments/dev
         run: |
-          terraform apply \
+          terraform plan \
             -var="localstack_endpoint=${{ env.LOCALSTACK_ENDPOINT }}" \
-            -auto-approve
+            -var="image_tag=${{ env.IMAGE_TAG }}" \
+            -out=tfplan-full
+
+      - name: Terraform Apply (Full Infrastructure) 🏗️
+        working-directory: infra/environments/dev
+        run: terraform apply -input=false tfplan-full
 
       - name: Wait for Infrastructure Stabilization ⏳
-        run: sleep 10
+        run: sleep 15
 
       - name: Run E2E Smoke Test (curl) 🧪
+        working-directory: infra/environments/dev
         run: |
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "http://localhost:8080/api/documents/upload" \
             -H "Content-Type: application/json" \
