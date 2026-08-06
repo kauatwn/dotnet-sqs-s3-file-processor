@@ -1,21 +1,4 @@
 services:
-  seq:
-    image: datalust/seq:2025.2
-    container_name: distributedfileprocessor-seq
-    environment:
-      - ACCEPT_EULA=Y
-      - SEQ_FIRSTRUN_NOAUTHENTICATION=True
-    ports:
-      - "5341:80"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
-      interval: 5s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    volumes:
-      - seq_data:/data
-
   postgres:
     image: postgres:18-alpine
     container_name: distributedfileprocessor-postgres
@@ -81,4 +64,4 @@ services:
 
 volumes:
   postgres_data:
-  seq_data:
+
