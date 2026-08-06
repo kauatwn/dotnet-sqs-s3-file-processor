@@ -1,0 +1,22 @@
+aws_region          = "us-east-1"
+environment         = "dev"
+project_name        = "fileprocessor"
+localstack_endpoint = "http://localhost:4566"
+security_group_ids  = ["sg-default"]
+
+db_username       = "postgres"
+db_password       = "ChangeMe123!"
+db_instance_class = "db.t4g.micro"
+
+api_task_config = {
+  cpu            = 256
+  memory         = 512
+  desired_count  = 1
+  container_port = 8080
+}
+
+worker_task_config = {
+  cpu           = 256
+  memory        = 512
+  desired_count = 1
+}
