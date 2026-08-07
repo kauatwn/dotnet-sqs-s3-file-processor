@@ -9,6 +9,7 @@ env:
   AWS_ACCESS_KEY_ID: "test"
   AWS_SECRET_ACCESS_KEY: "test"
   AWS_DEFAULT_REGION: "us-east-1"
+  AWS_PAGER: ""
   LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566"
   IMAGE_TAG: ${{ github.sha }}
 
@@ -25,6 +26,7 @@ jobs:
         uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
         with:
           image-tag: "2026.07.0"
+          use-pro: "true"
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
@@ -97,31 +99,82 @@ jobs:
         working-directory: infra/environments/dev
         run: terraform apply -input=false tfplan-full
 
-      - name: Wait for Infrastructure Stabilization ⏳
-        run: sleep 15
-
-      - name: Run E2E Smoke Test (curl) 🧪
-        working-directory: infra/environments/dev
+      - name: Wait for ECS Task Health ⏳
         run: |
-          TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks --cluster fileprocessor-cluster-dev --service-name api --query "taskArns[0]" --output text --no-cli-pager)
-          TASK_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks --cluster fileprocessor-cluster-dev --tasks "$TASK_ARN" --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" --output text --no-cli-pager)
+          echo "Waiting for ECS API task to reach RUNNING state..."
+          for i in $(seq 1 30); do
+            TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks \
+              --cluster fileprocessor-cluster-dev \
+              --service-name api \
+              --query "taskArns[0]" --output text 2>/dev/null || echo "None")
 
-          echo "API Container IP: $TASK_IP"
-          echo "API_RESOLVED_IP=$TASK_IP" >> $GITHUB_ENV
+            if [[ "$TASK_ARN" == "None" || -z "$TASK_ARN" ]]; then
+              echo "  Attempt $i/30: No task ARN found yet — retrying in 5s..."
+              sleep 5
+              continue
+            fi
 
-          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "http://$TASK_IP:8080/api/documents/upload" \
-            -H "Content-Type: application/json" \
-            -d '{"fileName":"ci_smoke_test.csv"}')
+            TASK_STATUS=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
+              --cluster fileprocessor-cluster-dev \
+              --tasks "$TASK_ARN" \
+              --query "tasks[0].lastStatus" --output text 2>/dev/null || echo "PENDING")
+            echo "  Attempt $i/30: Task status = $TASK_STATUS"
 
-          BODY=$(echo "$RESPONSE" | head -n -1)
-          STATUS=$(echo "$RESPONSE" | tail -n1)
+            if [[ "$TASK_STATUS" == "RUNNING" ]]; then
+              echo "Task is RUNNING!"
+              break
+            fi
+            sleep 5
+          done
 
-          if [[ "$STATUS" == "201" && "$BODY" == *"url"* ]]; then
-            echo "SUCCESS: API generated upload URL successfully."
-          else
-            echo "FAILURE: API did not return expected upload URL. Status: $STATUS Body: $BODY"
+          if [[ "$TASK_STATUS" != "RUNNING" ]]; then
+            echo "ERROR: ECS task did not reach RUNNING state within timeout."
+            echo "--- Debug: docker ps ---"
+            docker ps -a
             exit 1
           fi
+
+      - name: Run E2E Smoke Test (curl) 🧪
+        run: |
+          echo "--- Discovering API container via docker ---"
+          CONTAINER_ID=$(docker ps --format '{{.ID}} {{.Image}}' | grep "fileprocessor-api" | awk '{print $1}' | head -n1)
+
+          if [[ -z "$CONTAINER_ID" ]]; then
+            echo "ERROR: Could not find the API container. Listing all containers:"
+            docker ps -a --format 'table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+            exit 1
+          fi
+
+          CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_ID")
+          echo "API Container ID: $CONTAINER_ID"
+          echo "API Container IP: $CONTAINER_IP"
+          echo "API_RESOLVED_IP=$CONTAINER_IP" >> $GITHUB_ENV
+
+          if [[ -z "$CONTAINER_IP" ]]; then
+            echo "ERROR: Container IP is empty. Container network details:"
+            docker inspect "$CONTAINER_ID" --format '{{json .NetworkSettings.Networks}}'
+            exit 1
+          fi
+
+          echo "--- Smoke testing API at http://$CONTAINER_IP:8080 ---"
+          for i in $(seq 1 10); do
+            RESPONSE=$(curl -sS -w "\n%{http_code}" --max-time 5 -X POST "http://$CONTAINER_IP:8080/api/documents/upload" \
+              -H "Content-Type: application/json" \
+              -d '{"fileName":"ci_smoke_test.csv"}' 2>/dev/null || echo -e "\n000")
+
+            BODY=$(echo "$RESPONSE" | head -n -1)
+            STATUS=$(echo "$RESPONSE" | tail -n1)
+
+            if [[ "$STATUS" == "201" && "$BODY" == *"url"* ]]; then
+              echo "SUCCESS: API generated upload URL successfully."
+              exit 0
+            fi
+            echo "  Attempt $i/10: HTTP $STATUS — retrying in 3s..."
+            sleep 3
+          done
+
+          echo "FAILURE: API did not return expected upload URL after all retries. Last Status: $STATUS Body: $BODY"
+          exit 1
 
       - name: Generate CSV Payload for Load Test 📄
         run: docker compose run --rm csv-generator
