@@ -25,7 +25,6 @@ jobs:
         uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
         with:
           image-tag: "2026.07.0"
-          install-awslocal: "true"
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
@@ -104,8 +103,8 @@ jobs:
       - name: Run E2E Smoke Test (curl) 🧪
         working-directory: infra/environments/dev
         run: |
-          TASK_ARN=$(awslocal ecs list-tasks --cluster fileprocessor-cluster-dev --service-name api --query "taskArns[0]" --output text)
-          TASK_IP=$(awslocal ecs describe-tasks --cluster fileprocessor-cluster-dev --tasks "$TASK_ARN" --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" --output text)
+          TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks --cluster fileprocessor-cluster-dev --service-name api --query "taskArns[0]" --output text --no-cli-pager)
+          TASK_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks --cluster fileprocessor-cluster-dev --tasks "$TASK_ARN" --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" --output text --no-cli-pager)
 
           echo "API Container IP: $TASK_IP"
           echo "API_RESOLVED_IP=$TASK_IP" >> $GITHUB_ENV
