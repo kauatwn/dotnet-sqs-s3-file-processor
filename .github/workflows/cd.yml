@@ -102,34 +102,34 @@ jobs:
         run: sleep 15
 
       - name: Run E2E Smoke Test (curl) 🧪
-          working-directory: infra/environments/dev
-          run: |
-            RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "http://localhost:8080/api/documents/upload" \
-            -H "Content-Type: application/json" \
-            -d '{"fileName":"ci_smoke_test.csv"}')
-            
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            STATUS=$(echo "$RESPONSE" | tail -n1)
-            
-            if [[ "$STATUS" == "201" && "$BODY" == *"url"* ]]; then
-            echo "SUCCESS: API generated upload URL successfully."
-            else
-            echo "FAILURE: API did not return expected upload URL."
-            exit 1
-            fi
+        working-directory: infra/environments/dev
+        run: |
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "http://localhost:8080/api/documents/upload" \
+          -H "Content-Type: application/json" \
+          -d '{"fileName":"ci_smoke_test.csv"}')
 
-            - name: Generate CSV Payload for Load Test 📄
-              run: docker compose run --rm csv-generator
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n1)
 
-            - name: Run k6 Load Test & Stream to Cloud 📊
-              run: |
-                docker run --rm \
-                  --network host \
-                  -e BASE_URL="http://localhost:8080" \
-                  -e K6_CLOUD_TOKEN="${{ secrets.K6_CLOUD_TOKEN }}" \
-                  -e K6_CLOUD_PROJECT_ID="${{ secrets.K6_CLOUD_PROJECT_ID }}" \
-                  -e K6_CLOUD_STACK_ID="${{ secrets.K6_CLOUD_STACK_ID }}" \
-                  -e S3_HOST="localhost:4566" \
-                  -v ${{ github.workspace }}/k6:/scripts \
-                  -v ${{ github.workspace }}/tools/output:/data \
-                  grafana/k6:latest cloud run --local-execution /scripts/upload-documents-stress.js
+          if [[ "$STATUS" == "201" && "$BODY" == *"url"* ]]; then
+          echo "SUCCESS: API generated upload URL successfully."
+          else
+          echo "FAILURE: API did not return expected upload URL."
+          exit 1
+          fi
+
+          - name: Generate CSV Payload for Load Test 📄
+            run: docker compose run --rm csv-generator
+
+          - name: Run k6 Load Test & Stream to Cloud 📊
+            run: |
+              docker run --rm \
+                --network host \
+                -e BASE_URL="http://localhost:8080" \
+                -e K6_CLOUD_TOKEN="${{ secrets.K6_CLOUD_TOKEN }}" \
+                -e K6_CLOUD_PROJECT_ID="${{ secrets.K6_CLOUD_PROJECT_ID }}" \
+                -e K6_CLOUD_STACK_ID="${{ secrets.K6_CLOUD_STACK_ID }}" \
+                -e S3_HOST="localhost:4566" \
+                -v ${{ github.workspace }}/k6:/scripts \
+                -v ${{ github.workspace }}/tools/output:/data \
+                grafana/k6:latest cloud run --local-execution /scripts/upload-documents-stress.js
