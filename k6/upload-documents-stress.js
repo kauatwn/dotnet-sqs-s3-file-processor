@@ -17,7 +17,8 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || "http://distributedfileprocessor.api:8080";
+// Modificado para coincidir com a porta padrão 8080 utilizada no Fargate local
+const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
 
 export default function () {
   const apiRes = http.post(
@@ -41,8 +42,11 @@ export default function () {
     let uploadUrl = apiRes.json("url");
 
     // Se estiver rodando contra o LocalStack em container Docker, redireciona o host do localhost/127.0.0.1
-    if (uploadUrl.includes("localhost:4566") || uploadUrl.includes("127.0.0.1:4566")) {
-      const s3Host = __ENV.S3_HOST || "localstack:4566";
+    if (
+      uploadUrl.includes("localhost:4566") ||
+      uploadUrl.includes("127.0.0.1:4566")
+    ) {
+      const s3Host = __ENV.S3_HOST || "localhost:4566"; // Como rodamos k6 com --network host no pipeline, ele acessa o LocalStack em localhost
       uploadUrl = uploadUrl
         .replace("localhost:4566", s3Host)
         .replace("127.0.0.1:4566", s3Host);
