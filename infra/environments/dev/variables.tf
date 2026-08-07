@@ -42,6 +42,17 @@ variable "localstack_endpoint" {
   }
 }
 
+variable "image_tag" {
+  type        = string
+  default     = "latest"
+  description = "Docker image tag used by ECS task definitions."
+
+  validation {
+    condition     = length(trimspace(var.image_tag)) > 0
+    error_message = "The image_tag must not be empty."
+  }
+}
+
 variable "security_group_ids" {
   type        = list(string)
   default     = []

@@ -101,7 +101,7 @@ module "ecs" {
 
   api_task_config = {
     name           = "api"
-    image          = "${module.ecr_api.repository_url}:latest"
+    image          = "${module.ecr_api.repository_url}:${var.image_tag}"
     cpu            = var.api_task_config.cpu
     memory         = var.api_task_config.memory
     desired_count  = var.api_task_config.desired_count
@@ -117,7 +117,7 @@ module "ecs" {
 
   worker_task_config = {
     name          = "worker"
-    image         = "${module.ecr_worker.repository_url}:latest"
+    image         = "${module.ecr_worker.repository_url}:${var.image_tag}"
     cpu           = var.worker_task_config.cpu
     memory        = var.worker_task_config.memory
     desired_count = var.worker_task_config.desired_count
