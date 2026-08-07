@@ -22,7 +22,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
         .WithPassword("postgres")
         .Build();
 
-    public LocalStackContainer LocalStack { get; } = new LocalStackBuilder("localstack/localstack-pro:2026.07.0")
+    public LocalStackContainer LocalStack { get; } = new LocalStackBuilder("localstack/localstack:2026.07.0")
         .WithEnvironment("LOCALSTACK_AUTH_TOKEN", Environment.GetEnvironmentVariable("LOCALSTACK_AUTH_TOKEN"))
         .Build();
 
