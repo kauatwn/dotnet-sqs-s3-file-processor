@@ -1,174 +1,56 @@
-# Distributed File Processor
+# Cloud-Native Bulk Ingestion Engine
 
-A robust, event-driven distributed system built with **C# 14** and **.NET 10** for processing large files asynchronously. This project serves as an engineering sandbox to explore cloud-native patterns, specifically integrating **AWS S3**, **AWS SQS**, and Background Workers to handle mass data ingestion reliably.
+## 1. The Problem and Domain
 
-## Table of Contents
+Processing massive files synchronously while allocating the entire payload in RAM inevitably leads to _Out of Memory_ errors. On the other hand, persisting records one by one exhausts the database connection pool and degrades system throughput.
 
-- [Prerequisites](#prerequisites)
-- [How to Run](#how-to-run)
-- [Project Structure](#project-structure)
-- [Architecture & Design Principles](#architecture--design-principles)
+To address this classic high-volume, I/O-concurrency bottleneck, a distributed ecosystem focused on asynchronous ingestion was designed. The primary goal is to receive and process large files while maintaining low resource consumption and providing workload isolation from the main application.
 
-## Prerequisites
+## 2. Application Architecture and Patterns
 
-Ensure you have the following installed to run this project efficiently:
+The processing flow operates in a choreographed and decentralized manner:
 
-- **[.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)** (or later)
-- **[Docker Desktop](https://www.docker.com/)** (Required to orchestrate PostgreSQL, Seq, and LocalStack)
-- **IDE:** [Visual Studio](https://visualstudio.microsoft.com), [Visual Studio Code](https://code.visualstudio.com/), or [Rider](https://www.jetbrains.com/rider/).
-- **API Client:** [Postman](https://www.postman.com/) or [Insomnia](https://insomnia.rest/).
+- **Edge Offloading (Pre-signed URLs):** Direct byte uploads through the API are completely avoided to mitigate the _Double-Hop_ problem. A pre-signed URL is generated within milliseconds, allowing the client to securely upload the CSV file directly to **Amazon S3**.
+- **Decoupled Messaging:** The completion of an upload to S3 automatically triggers a notification to **Amazon SQS**, completely isolating the ingestion layer from the processing layer.
+- **Backpressure Through Pull-Based Consumption:** In the background, a _Worker Service_ performs _Long Polling_ against the queue, controlling its own consumption rate on demand to protect the infrastructure from traffic spikes.
+- **Code Optimization (Streaming & Bulk Insert):** Downloading the entire file to disk is avoided. Data is continuously read directly from the network using **Streaming (`IAsyncEnumerable`)**, keeping RAM usage stable. Clean records are accumulated in memory and flushed to **PostgreSQL** through structured **Bulk Inserts**.
+- **Strict Idempotency:** Database state checks prevent already-completed files from being processed again, protecting the system against duplicate delivery resulting from SQS's native _At-Least-Once_ delivery model.
 
-## How to Run
+## 3. Resilience and Fault-Tolerance Engineering
 
-### 1. Clone the Repository
+Distributed environments operate under the assumption that network failures and partial outages are inevitable. The mechanical stability of the ecosystem is ensured through robust defensive policies applied at a granular level:
 
-```bash
-git clone https://github.com/kauatwn/dotnet-sqs-s3-file-processor.git
-```
+| Component / Scenario             | Technical Risk                                                            | Protection Mechanism       | Implementation Strategy                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SQS Consumption**              | _At-Least-Once Delivery_ resulting in duplicate messages.                 | Domain Idempotency         | The `ProcessDocumentUseCase` intercepts the message and validates the Job state in the database; already-processed payloads are rejected before the parser is invoked. |
+| **AWS SDK Integration**          | Transient instability during HTTP network calls to S3 or SQS.             | Polly Resilience Pipelines | _Retry_ policies with _Exponential Backoff_ and _Jitter_ isolate and handle network I/O failures without bringing down the container.                                  |
+| **Invalid or Corrupted Payload** | Files outside the expected format causing continuous processing failures. | Dead Letter Queue (DLQ)    | Messages that fail after 5 attempts (`max_receive_count = 5`) are removed from the main queue and isolated in the DLQ for auditing.                                    |
+| **Database Overload (I/O)**      | A flood of concurrent writes exhausting the PostgreSQL connection pool.   | Pull-Based Backpressure    | The Worker actively controls the consumption rate through _Long Polling_ directly against the queue. The API never pushes excessive database connections.              |
 
-### 2. Enter the Directory
+## 4. Architectural Decisions and FinOps Approach
 
-```bash
-cd dotnet-sqs-s3-file-processor
-```
+The selection of technologies follows rigorous throughput and cost-efficiency criteria:
 
-### 3. Run with Docker Compose
+- **Why ECS with AWS Fargate instead of AWS Lambda?** Complex ETL routines and bulk data ingestion workloads that require longer execution times and high CPU/memory consumption are not well suited to Lambda's 15-minute execution limit. Fargate's container-based model provides predictable costs and supports elastic _Auto Scaling_ driven by the volume of messages in SQS.
+- **Why RDS Proxy is unnecessary:** Since the compute layer is based on persistent containers running on ECS Fargate rather than parallel ephemeral functions, the PostgreSQL connection pool can be managed natively, centrally, and predictably by the application itself. Connection overhead is mitigated at the source, eliminating additional proxy costs.
 
-This command spins up the API, the Background Worker, PostgreSQL, Seq (for centralized logging), and **LocalStack** (simulating AWS S3 and SQS locally).
+## 5. Infrastructure as Code
 
-```bash
-docker compose up -d
-```
+The entire infrastructure is provisioned declaratively using **Terraform**. The repository follows a **Pure Modules** pattern, where resources are logically isolated and composed through **Glue Code** in the development environment:
 
-_Seq (Logs) will be accessible at `http://localhost:5341`._
+- **Compute Layer:** An **Amazon ECS** cluster instrumented with _Container Insights_ manages on-demand tasks running on the _Serverless_ infrastructure provided by **AWS Fargate**.
+- **Registry Layer:** **Amazon ECR** repositories privately store immutable Docker images for the API and Worker.
+- **Messaging and Resilience:** SQS primary queues are configured with redirection policies to **Dead Letter Queues (DLQs)**, preventing failed messages from being lost.
+- **Data and Persistence:** An **Amazon RDS PostgreSQL** relational database is provisioned and fully protected against public external access.
+- **Strict IAM Policies:** The application's `task_role` restricts actions strictly to those required (`sqs:ReceiveMessage`, `sqs:DeleteMessage`, `s3:GetObject`), enforcing the principle of least privilege and preventing cross-service administrative privileges.
 
-### 4. Simulating a Full Upload
+## 6. Known Limitations and Trade-offs
 
-To test the system's high-throughput capabilities, a dedicated C# tool is provided to generate a massive CSV file dynamically.
+Pragmatic engineering decisions introduce explicit trade-offs into the system:
 
-**Step 4.1: Generate the Payload (No .NET SDK required)**
-You can use Docker Compose to run the generator script isolated from your host machine. This will create a 100 thousand records CSV file (`payload-100k.csv`, approx. 6MB) in your `output` directory:
+- **Orphan Jobs (Stale States):** Since the job record is created in the database before the client's actual upload to S3, a client abandoning the upload will leave the job indefinitely in the `Pending` state.
+  - _Production Mitigation:_ Implement a _Sweeper Worker_ to purge stale data in the background or move this transient state to **Redis** with a _Time-To-Live (TTL)_.
 
-```bash
-docker compose run --rm csv-generator
-```
+- **Loss of Immediate Validation:** By bypassing the API and uploading the file directly to the cloud, synchronous payload structure validation at the edge is sacrificed. Corrupted files or invalid layouts are detected asynchronously by the Worker, resulting in the message being routed to the DLQ.
 
-_The generated file will have the following structure:_
-
-```csv
-Date,Amount,Description,AccountId
-2023-05-12,4321.50,Simulated_Transaction_1,ACC-84732
-2023-11-03,12.99,Simulated_Transaction_2,ACC-10294
-```
-
-**Step 4.2: Request a Pre-signed URL**
-Perform a `POST` request to the API to get temporary upload permissions:
-
-- **Endpoint:** `POST http://localhost:8080/api/documents/upload`
-- **Body:** `json { "fileName": "payload-100k.csv" }`
-
-**Step 4.3: Direct Upload to S3 (LocalStack)**
-Use the returned `url` to perform a `PUT` request via Postman or cURL.
-Attach the `payload-100k.csv` file as a binary payload. _(No specific `Content-Type` header is required for this sandbox)_.
-
-_Once the upload is complete, check the Seq Dashboard (`http://localhost:5341`) to watch the Background Worker ingest the 100,000 records into PostgreSQL in real-time._
-
-### 5. Execute Tests
-
-To validate the domain logic, infrastructure parsing, and distributed flows:
-
-```bash
-dotnet test
-```
-
-## Project Structure
-
-The solution follows the **Clean Architecture** principles to ensure separation of concerns, with a dedicated split between the Web API and the Background Worker.
-
-```plaintext
-dotnet-sqs-s3-file-processor/
-├── src/
-│   ├── DistributedFileProcessor.API/
-│   ├── DistributedFileProcessor.Application/
-│   ├── DistributedFileProcessor.Domain/
-│   ├── DistributedFileProcessor.Infrastructure/
-│   └── DistributedFileProcessor.Worker/
-└── tests/
-    ├── DistributedFileProcessor.IntegrationTests/
-    └── DistributedFileProcessor.UnitTests/
-```
-
-## Architecture & Design Principles
-
-This repository prioritizes **scalability** and **asynchronous processing**, utilizing an **Event-Driven Architecture (Choreography)** to ensure maximum decoupling between services.
-
-### 1. Event-Driven Architecture (Choreography)
-
-Instead of the API acting as a proxy for file bytes (Double-Hop), the system uses **Pre-signed URLs** to allow direct, secure uploads to S3.
-
-![Architecture diagram illustrating the Pre-signed URL upload and Event-Driven Choreography patterns](./docs/architecture.png)
-_Figure 1: Event-driven choreography flow from pre-signed URL request to database ingestion._
-
-1. **Request Upload (API):** The client requests temporary upload permission. The API generates a **Pre-signed URL**.
-2. **Tracking:** A job record with a "Pending" status is saved to the PostgreSQL database.
-3. **Direct Upload:** The client performs a `PUT` request directly to **Amazon S3** using the provided URL.
-4. **S3 Event Notification:** Upon successful upload, S3 automatically triggers an event notification to **Amazon SQS**.
-5. **Processing (Worker):** A background worker consumes the S3 event from SQS, downloads the file, streams and parses the CSV content (`IAsyncEnumerable`), and performs a bulk insert of the records into the database.
-
-### 2. Design Patterns
-
-The project utilizes established patterns to ensure modularity and cloud readiness.
-
-|             Pattern              |                           Usage Scenario                           | Implementation                                 |
-| :------------------------------: | :----------------------------------------------------------------: | :--------------------------------------------- |
-|       **Pre-signed URLs**        |  Eliminating the "Double-Hop" problem, reducing API network load   | `DocumentsController` & `S3FileStorageService` |
-|      **Event Choreography**      | Decoupling the API from the Worker, solving the Dual-Write problem | `LocalStackExtensions` & `SqsMessageConsumer`  |
-| **Streaming (IAsyncEnumerable)** |          Processing large datasets without memory limits           | `CsvTransactionFileParser`                     |
-|         **Idempotency**          | Guarding against SQS duplicated messages (At-Least-Once delivery)  | `ProcessDocumentUseCase`                       |
-
-### 3. Resilience & Error Handling
-
-Distributed systems are prone to network failures. The application handles this through:
-
-- **Polly Resilience Pipelines:** Configured for S3 and SQS interactions to handle transient network errors.
-- **Dead Letter Queues (DLQ):** If the worker fails to process a file (e.g., bad CSV format) after multiple retries, the message is routed to an SQS DLQ, and the job status is marked as "Failed".
-
-### 4. Known Limitations & Pragmatic Trade-offs
-
-This project is an engineering sandbox focused on cloud-native integration. While the architecture solves classic issues like "Dual-Write" and "Double-Hop", it introduces specific pragmatic trade-offs:
-
-- **Orphan Jobs (Stale State):** The API creates a `Pending` job in the database _before_ the client uploads the file to S3 via the Pre-signed URL. If the client abandons the upload, the S3 Event is never triggered, leaving the job `Pending` forever. _Production Mitigation:_ Implement a background cleanup job (Sweeper Worker) or store the initial state in Redis with a Time-To-Live (TTL).
-- **Loss of Immediate Edge Validation:** By bypassing the Web API for the actual file upload, we lose the ability to validate the file content synchronously. A corrupted file will only be detected asynchronously when the background worker attempts to parse it.
-- **High-Throughput vs. Physical Insertion Order:** To achieve ingestion rates of over 100k+ records/sec, the `EFCore.BulkExtensions` library is configured with `PreserveInsertOrder = false`. This trades physical database insertion order for extreme speed, relying entirely on PostgreSQL's ACID properties and business logic dates for ordering.
-
-> [!IMPORTANT]
-> **Architectural Decision: Idempotency & At-Least-Once Delivery**
->
-> SQS and S3 Event Notifications guarantee _At-Least-Once_ delivery, meaning duplicate messages can occur. This system handles this natively: the `ProcessDocumentUseCase` implements an **idempotency check**, gracefully ignoring duplicate messages if the Job is already marked as `Completed`.
-
-### 5. Comprehensive Testing Strategy
-
-The project adopts a strategy focused on **Cloud Integration** and **Isolation**.
-
-- **Unit Tests:** Verify business rules and CSV parsing logic in isolation.
-- **Integration Tests:** Verify the entire distributed pipeline.
-  - **Technology:** Uses **[Testcontainers](https://testcontainers.com/)** to orchestrate real instances of PostgreSQL and **[LocalStack](https://www.localstack.cloud/)**.
-  - **Worker Validation:** The test suite injects the Worker into the `WebApplicationFactory`, allowing end-to-end validation (API -> DB -> S3 -> SQS -> Worker -> DB) within a single test execution.
-
-### 6. Performance & Load Testing
-
-To validate the system's backpressure capabilities and the database's resilience under high concurrency, a load testing suite using **[k6](https://k6.io/)** is included.
-
-Run the stress test via Docker Compose to simulate multiple concurrent clients performing heavy file uploads (requires the 100k payload to be generated first):
-
-```bash
-docker compose run --rm k6
-```
-
-### 7. CI/CD & Quality
-
-The project includes a **GitHub Actions** workflow that ensures quality on every push:
-
-- **Automated Testing:** Runs Unit and Integration tests using `XPlat Code Coverage`.
-- **Static Analysis:** Integrates with **SonarCloud** for code quality gates, explicitly excluding EF Core migrations and AWS wrappers via `[ExcludeFromCodeCoverage]`.
-- **Docker Build Validation:** Verifies that both API and Worker container images build successfully (`docker buildx`).
+- **High Throughput vs. Physical Insertion Order:** To achieve high records-per-second insertion rates, physical insertion ordering in the database is sacrificed in favor of bulk write performance. Temporal consistency instead relies exclusively on PostgreSQL's ACID properties and the domain's own date-handling logic.
