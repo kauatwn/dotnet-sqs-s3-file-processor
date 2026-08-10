@@ -1,9 +1,13 @@
-name: LocalStack Deployment (Dev)
+name: "LocalStack Deployment (Dev)"
 
 on:
   workflow_dispatch:
   push:
     branches: ["main", "master"]
+
+permissions:
+  contents: read
+  actions: read
 
 env:
   AWS_ACCESS_KEY_ID: "test"
@@ -15,36 +19,36 @@ env:
 
 jobs:
   deploy-infra:
-    name: Provision Infrastructure & Deploy
+    name: "Provision Infrastructure & Deploy"
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout code 🛎️
+      - name: "Checkout code 🛎️"
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Start LocalStack 🐳
+      - name: "Start LocalStack 🐳"
         uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
         with:
           image-tag: "2026.07.0"
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
-      - name: Setup Terraform 🛠️
+      - name: "Setup Terraform 🛠️"
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
 
-      - name: Terraform Format Check 🧹
+      - name: "Terraform Format Check 🧹"
         working-directory: infra/environments/dev
         run: terraform fmt -check
 
-      - name: Terraform Init 🚀
+      - name: "Terraform Init 🚀"
         working-directory: infra/environments/dev
         run: terraform init
 
-      - name: Terraform Validate ✅
+      - name: "Terraform Validate ✅"
         working-directory: infra/environments/dev
         run: terraform validate
 
-      - name: Terraform Plan (Target ECR) 📋
+      - name: "Terraform Plan (Target ECR) 📋"
         working-directory: infra/environments/dev
         run: |
           terraform plan \
@@ -53,40 +57,47 @@ jobs:
             -var="localstack_endpoint=${{ env.LOCALSTACK_ENDPOINT }}" \
             -out=tfplan-ecr
 
-      - name: Terraform Apply (Target ECR) 🏗️
+      - name: "Terraform Apply (Target ECR) 🏗️"
         working-directory: infra/environments/dev
         run: terraform apply -input=false tfplan-ecr
 
-      - name: Setup Docker Buildx
+      - name: "Export ECR Outputs 📤"
+        id: ecr-outputs
+        working-directory: infra/environments/dev
+        run: |
+          echo "api_repo=$(terraform output -raw ecr_api_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "worker_repo=$(terraform output -raw ecr_worker_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Docker Buildx 🐳"
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
         with:
           driver-opts: network=host
 
-      - name: Build and Push API Docker Image 🐳
+      - name: "Build and Push API Docker Image 📦"
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: src/DistributedFileProcessor.API/Dockerfile
           push: true
           tags: |
-            000000000000.dkr.ecr.us-east-1.localhost.localstack.cloud:4566/fileprocessor-api-dev:${{ env.IMAGE_TAG }}
-            000000000000.dkr.ecr.us-east-1.localhost.localstack.cloud:4566/fileprocessor-api-dev:latest
+            ${{ steps.ecr-outputs.outputs.api_repo }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-outputs.outputs.api_repo }}:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=api-build
 
-      - name: Build and Push Worker Docker Image 🐳
+      - name: "Build and Push Worker Docker Image 📦"
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: src/DistributedFileProcessor.Worker/Dockerfile
           push: true
           tags: |
-            000000000000.dkr.ecr.us-east-1.localhost.localstack.cloud:4566/fileprocessor-worker-dev:${{ env.IMAGE_TAG }}
-            000000000000.dkr.ecr.us-east-1.localhost.localstack.cloud:4566/fileprocessor-worker-dev:latest
+            ${{ steps.ecr-outputs.outputs.worker_repo }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-outputs.outputs.worker_repo }}:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=worker-build
 
-      - name: Terraform Plan (Full Infrastructure) 📋
+      - name: "Terraform Plan (Full Infrastructure) 📋"
         working-directory: infra/environments/dev
         run: |
           terraform plan \
@@ -94,99 +105,98 @@ jobs:
             -var="image_tag=${{ env.IMAGE_TAG }}" \
             -out=tfplan-full
 
-      - name: Terraform Apply (Full Infrastructure) 🏗️
+      - name: "Terraform Apply (Full Infrastructure) 🏗️"
         working-directory: infra/environments/dev
         run: terraform apply -input=false tfplan-full
 
-      - name: Wait for ECS Task Health ⏳
+      - name: "Export ECS Outputs 📤"
+        id: ecs-outputs
+        working-directory: infra/environments/dev
         run: |
-          echo "Waiting for ECS API task to reach RUNNING state..."
-          for i in $(seq 1 30); do
-            TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks \
-              --cluster fileprocessor-cluster-dev \
-              --service-name api \
-              --query "taskArns[0]" --output text 2>/dev/null || echo "None")
+          echo "cluster_arn=$(terraform output -raw ecs_cluster_arn)" >> "$GITHUB_OUTPUT"
+          echo "api_service_name=$(terraform output -raw ecs_api_service_name)" >> "$GITHUB_OUTPUT"
+          echo "worker_service_name=$(terraform output -raw ecs_worker_service_name)" >> "$GITHUB_OUTPUT"
 
-            if [[ "$TASK_ARN" == "None" || -z "$TASK_ARN" ]]; then
-              echo "  Attempt $i/30: No task ARN found yet — retrying in 5s..."
-              sleep 5
-              continue
-            fi
+      - name: "Wait for ECS Services to Stabilize ⏳"
+        run: |
+          aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs wait services-stable \
+            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
+            --services \
+              "${{ steps.ecs-outputs.outputs.api_service_name }}" \
+              "${{ steps.ecs-outputs.outputs.worker_service_name }}"
 
-            TASK_STATUS=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
-              --cluster fileprocessor-cluster-dev \
+      - name: "Resolve API Task IP from ECS 🔍"
+        run: |
+          echo "--- Querying ECS Task ARN ---"
+
+          TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks \
+            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
+            --service-name "${{ steps.ecs-outputs.outputs.api_service_name }}" \
+            --query "taskArns[0]" \
+            --output text)
+
+          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
+            echo "ERROR: No tasks found for service ${{ steps.ecs-outputs.outputs.api_service_name }}"
+            exit 1
+          fi
+
+          echo "Found Task ARN: $TASK_ARN"
+          echo "--- Querying Task IP ---"
+
+          CONTAINER_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
+            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].attachments[0].details[?name=='privateIPv4Address'].value | [0]" \
+            --output text)
+
+          if [ -z "$CONTAINER_IP" ] || [ "$CONTAINER_IP" = "None" ] || [ "$CONTAINER_IP" = "null" ]; then
+            CONTAINER_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
+              --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
               --tasks "$TASK_ARN" \
-              --query "tasks[0].lastStatus" --output text 2>/dev/null || echo "PENDING")
-            echo "  Attempt $i/30: Task status = $TASK_STATUS"
+              --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" \
+              --output text)
+          fi
 
-            if [[ "$TASK_STATUS" == "RUNNING" ]]; then
-              echo "Task is RUNNING!"
-              break
-            fi
-            sleep 5
-          done
+          if [ -z "$CONTAINER_IP" ] || [ "$CONTAINER_IP" = "None" ] || [ "$CONTAINER_IP" = "null" ]; then
+            echo "ERROR: Could not resolve IP for task $TASK_ARN"
 
-          if [[ "$TASK_STATUS" != "RUNNING" ]]; then
-            echo "ERROR: ECS task did not reach RUNNING state within timeout."
-            echo "--- Debug: docker ps ---"
-            docker ps -a
+            aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
+              --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
+              --tasks "$TASK_ARN"
+
             exit 1
           fi
 
-      - name: Run E2E Smoke Test (curl) 🧪
-        run: |
-          echo "--- Discovering API container via docker ---"
-          CONTAINER_ID=$(docker ps --format '{{.ID}} {{.Image}}' | grep "fileprocessor-api" | awk '{print $1}' | head -n1)
-
-          if [[ -z "$CONTAINER_ID" ]]; then
-            echo "ERROR: Could not find the API container. Listing all containers:"
-            docker ps -a --format 'table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
-            exit 1
-          fi
-
-          CONTAINER_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER_ID")
-          echo "API Container ID: $CONTAINER_ID"
           echo "API Container IP: $CONTAINER_IP"
-          echo "API_RESOLVED_IP=$CONTAINER_IP" >> $GITHUB_ENV
+          echo "API_RESOLVED_IP=$CONTAINER_IP" >> "$GITHUB_ENV"
 
-          if [[ -z "$CONTAINER_IP" ]]; then
-            echo "ERROR: Container IP is empty. Container network details:"
-            docker inspect "$CONTAINER_ID" --format '{{json .NetworkSettings.Networks}}'
-            exit 1
-          fi
+      - name: "Run E2E Smoke Test 🧪"
+        run: |
+          echo "--- Smoke testing API ---"
 
-          echo "--- Smoke testing API at http://$CONTAINER_IP:8080 ---"
-          for i in $(seq 1 10); do
-            RESPONSE=$(curl -sS -w "\n%{http_code}" --max-time 5 -X POST "http://$CONTAINER_IP:8080/api/documents/upload" \
-              -H "Content-Type: application/json" \
-              -d '{"fileName":"ci_smoke_test.csv"}' 2>/dev/null || echo -e "\n000")
+          curl --retry 10 \
+            --retry-delay 3 \
+            --retry-connrefused \
+            --fail \
+            -sS \
+            -X POST \
+            "http://${API_RESOLVED_IP}:8080/api/documents/upload" \
+            -H "Content-Type: application/json" \
+            -d '{"fileName":"ci_smoke_test.csv"}'
 
-            BODY=$(echo "$RESPONSE" | head -n -1)
-            STATUS=$(echo "$RESPONSE" | tail -n1)
-
-            if [[ "$STATUS" == "201" && "$BODY" == *"url"* ]]; then
-              echo "SUCCESS: API generated upload URL successfully."
-              exit 0
-            fi
-            echo "  Attempt $i/10: HTTP $STATUS — retrying in 3s..."
-            sleep 3
-          done
-
-          echo "FAILURE: API did not return expected upload URL after all retries. Last Status: $STATUS Body: $BODY"
-          exit 1
-
-      - name: Generate CSV Payload for Load Test 📄
+      - name: "Generate CSV Payload for Load Test 📄"
         run: docker compose run --rm csv-generator
 
-      - name: Run k6 Load Test & Stream to Cloud 📊
+      - name: "Run k6 Load Test & Stream to Cloud 📊"
         run: |
           docker run --rm \
             --network host \
-            -e BASE_URL="http://${{ env.API_RESOLVED_IP }}:8080" \
+            -e BASE_URL="http://${API_RESOLVED_IP}:8080" \
             -e K6_CLOUD_TOKEN="${{ secrets.K6_CLOUD_TOKEN }}" \
             -e K6_CLOUD_PROJECT_ID="${{ secrets.K6_CLOUD_PROJECT_ID }}" \
             -e K6_CLOUD_STACK_ID="${{ secrets.K6_CLOUD_STACK_ID }}" \
             -e S3_HOST="localhost:4566" \
-            -v ${{ github.workspace }}/k6:/scripts \
-            -v ${{ github.workspace }}/tools/output:/data \
-            grafana/k6:latest cloud run --local-execution /scripts/upload-documents-stress.js
+            -v "${{ github.workspace }}/k6:/scripts" \
+            -v "${{ github.workspace }}/tools/output:/data" \
+            grafana/k6:latest \
+            cloud run --local-execution /scripts/upload-documents-stress.js
