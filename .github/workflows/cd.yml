@@ -30,6 +30,8 @@ jobs:
         uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
         with:
           image-tag: "2026.07.0"
+          configuration: |
+            ECS_DOCKER_FLAGS=-p 0:8080
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
@@ -125,54 +127,46 @@ jobs:
               "${{ steps.ecs-outputs.outputs.api_service_name }}" \
               "${{ steps.ecs-outputs.outputs.worker_service_name }}"
 
-      - name: "Resolve API Task IP from ECS 🔍"
+      - name: "Resolve API Endpoint from Docker 🔍"
         run: |
-          echo "--- Querying ECS Task ARN ---"
+          echo "--- Waiting for API container to start ---"
 
-          TASK_ARN=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs list-tasks \
-            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
-            --service-name "${{ steps.ecs-outputs.outputs.api_service_name }}" \
-            --query "taskArns[0]" \
-            --output text)
+          for i in $(seq 1 30); do
+            CONTAINER_ID=$(docker ps \
+              --filter "name=ls-ecs-" \
+              --filter "publish=8080" \
+              --format '{{.ID}}' | head -n 1)
 
-          if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
-            echo "ERROR: No tasks found for service ${{ steps.ecs-outputs.outputs.api_service_name }}"
+            if [ -n "$CONTAINER_ID" ]; then
+              echo "Found ECS container: $CONTAINER_ID"
+              break
+            fi
+
+            echo "Attempt $i/30: No ECS container with port 8080 found yet, retrying in 5s..."
+            sleep 5
+          done
+
+          if [ -z "$CONTAINER_ID" ]; then
+            echo "ERROR: No ECS container with port 8080 found after 150s"
+            echo "--- All running containers ---"
+            docker ps -a
             exit 1
           fi
 
-          echo "Found Task ARN: $TASK_ARN"
-          echo "--- Querying Task IP ---"
+          HOST_PORT=$(docker port "$CONTAINER_ID" 8080/tcp | head -n 1 | cut -d: -f2)
 
-          CONTAINER_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
-            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
-            --tasks "$TASK_ARN" \
-            --query "tasks[0].attachments[0].details[?name=='privateIPv4Address'].value | [0]" \
-            --output text)
-
-          if [ -z "$CONTAINER_IP" ] || [ "$CONTAINER_IP" = "None" ] || [ "$CONTAINER_IP" = "null" ]; then
-            CONTAINER_IP=$(aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
-              --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
-              --tasks "$TASK_ARN" \
-              --query "tasks[0].containers[0].networkInterfaces[0].privateIpv4Address" \
-              --output text)
-          fi
-
-          if [ -z "$CONTAINER_IP" ] || [ "$CONTAINER_IP" = "None" ] || [ "$CONTAINER_IP" = "null" ]; then
-            echo "ERROR: Could not resolve IP for task $TASK_ARN"
-
-            aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs describe-tasks \
-              --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
-              --tasks "$TASK_ARN"
-
+          if [ -z "$HOST_PORT" ]; then
+            echo "ERROR: Port 8080 not mapped for container $CONTAINER_ID"
+            docker inspect "$CONTAINER_ID"
             exit 1
           fi
 
-          echo "API Container IP: $CONTAINER_IP"
-          echo "API_RESOLVED_IP=$CONTAINER_IP" >> "$GITHUB_ENV"
+          echo "API accessible at: http://127.0.0.1:$HOST_PORT"
+          echo "API_URL=http://127.0.0.1:$HOST_PORT" >> "$GITHUB_ENV"
 
       - name: "Run E2E Smoke Test 🧪"
         run: |
-          echo "--- Smoke testing API ---"
+          echo "--- Smoke testing API at ${API_URL} ---"
 
           curl --retry 10 \
             --retry-delay 3 \
@@ -180,7 +174,7 @@ jobs:
             --fail \
             -sS \
             -X POST \
-            "http://${API_RESOLVED_IP}:8080/api/documents/upload" \
+            "${API_URL}/api/documents/upload" \
             -H "Content-Type: application/json" \
             -d '{"fileName":"ci_smoke_test.csv"}'
 
@@ -191,7 +185,7 @@ jobs:
         run: |
           docker run --rm \
             --network host \
-            -e BASE_URL="http://${API_RESOLVED_IP}:8080" \
+            -e BASE_URL="${API_URL}" \
             -e K6_CLOUD_TOKEN="${{ secrets.K6_CLOUD_TOKEN }}" \
             -e K6_CLOUD_PROJECT_ID="${{ secrets.K6_CLOUD_PROJECT_ID }}" \
             -e K6_CLOUD_STACK_ID="${{ secrets.K6_CLOUD_STACK_ID }}" \
