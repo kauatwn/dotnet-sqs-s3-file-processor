@@ -31,7 +31,7 @@ jobs:
         with:
           image-tag: "2026.07.0"
           configuration: |
-            ECS_DOCKER_FLAGS=-p 0:8080
+            ECS_DOCKER_FLAGS="-p 0:8080"
         env:
           LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
