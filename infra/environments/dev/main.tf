@@ -55,8 +55,8 @@ module "ecr_worker" {
 }
 
 # 3. Pure Module: S3 Storage for CSV files
-module "storage" {
-  source = "../../modules/storage"
+module "s3" {
+  source = "../../modules/s3"
 
   bucket_name = local.bucket_name
   environment = var.environment
@@ -64,8 +64,8 @@ module "storage" {
 }
 
 # 4. Pure Module: SQS Queue & Dead Letter Queue (DLQ)
-module "messaging" {
-  source = "../../modules/messaging"
+module "sqs" {
+  source = "../../modules/sqs"
 
   queue_name        = local.queue_name
   environment       = var.environment
@@ -74,8 +74,8 @@ module "messaging" {
 }
 
 # 5. Pure Module: RDS PostgreSQL Database
-module "database" {
-  source = "../../modules/database"
+module "rds" {
+  source = "../../modules/rds"
 
   db_name                = local.db_name
   environment            = var.environment
@@ -109,9 +109,9 @@ module "ecs" {
     environment_vars = {
       "ASPNETCORE_ENVIRONMENT"               = "Development"
       "ASPNETCORE_HTTP_PORTS"                = tostring(var.api_task_config.container_port)
-      "ConnectionStrings__DefaultConnection" = module.database.connection_string
-      "AWS__SQS__QueueUrl"                   = module.messaging.queue_url
-      "AWS__S3__BucketName"                  = module.storage.bucket_id
+      "ConnectionStrings__DefaultConnection" = module.rds.connection_string
+      "AWS__SQS__QueueUrl"                   = module.sqs.queue_url
+      "AWS__S3__BucketName"                  = module.s3.bucket_id
     }
   }
 
@@ -123,9 +123,9 @@ module "ecs" {
     desired_count = var.worker_task_config.desired_count
     environment_vars = {
       "DOTNET_ENVIRONMENT"                   = "Development"
-      "ConnectionStrings__DefaultConnection" = module.database.connection_string
-      "AWS__SQS__QueueUrl"                   = module.messaging.queue_url
-      "AWS__S3__BucketName"                  = module.storage.bucket_id
+      "ConnectionStrings__DefaultConnection" = module.rds.connection_string
+      "AWS__SQS__QueueUrl"                   = module.sqs.queue_url
+      "AWS__S3__BucketName"                  = module.s3.bucket_id
     }
   }
 

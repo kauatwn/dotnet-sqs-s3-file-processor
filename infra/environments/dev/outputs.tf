@@ -13,31 +13,31 @@ output "ecr_worker_repository_url" {
 output "s3_bucket_name" {
   type        = string
   description = "The unique name of the S3 bucket created for CSV file storage."
-  value       = module.storage.bucket_id
+  value       = module.s3.bucket_id
 }
 
 output "sqs_queue_url" {
   type        = string
   description = "The URL of the primary SQS document processing queue."
-  value       = module.messaging.queue_url
+  value       = module.sqs.queue_url
 }
 
 output "sqs_dlq_url" {
   type        = string
   description = "The URL of the Dead Letter Queue (DLQ)."
-  value       = module.messaging.dlq_url
+  value       = module.sqs.dlq_url
 }
 
 output "rds_endpoint" {
   type        = string
   description = "The connection endpoint for the PostgreSQL RDS database."
-  value       = module.database.db_instance_endpoint
+  value       = module.rds.db_instance_endpoint
 }
 
 output "rds_address" {
   type        = string
   description = "The hostname address for the PostgreSQL RDS database."
-  value       = module.database.db_instance_address
+  value       = module.rds.db_instance_address
 }
 
 output "ecs_cluster_arn" {
