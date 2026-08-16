@@ -6,13 +6,9 @@
     <File Path="infra\environments\dev\outputs.tf" />
     <File Path="infra\environments\dev\providers.tf" />
     <File Path="infra\environments\dev\variables.tf" />
+    <File Path="infra\environments\dev\versions.tf" />
   </Folder>
   <Folder Name="/infra/modules/" />
-  <Folder Name="/infra/modules/database/">
-    <File Path="infra\modules\database\main.tf" />
-    <File Path="infra\modules\database\outputs.tf" />
-    <File Path="infra\modules\database\variables.tf" />
-  </Folder>
   <Folder Name="/infra/modules/ecr/">
     <File Path="infra\modules\ecr\main.tf" />
     <File Path="infra\modules\ecr\outputs.tf" />
@@ -23,15 +19,20 @@
     <File Path="infra\modules\ecs\outputs.tf" />
     <File Path="infra\modules\ecs\variables.tf" />
   </Folder>
-  <Folder Name="/infra/modules/messaging/">
-    <File Path="infra\modules\messaging\main.tf" />
-    <File Path="infra\modules\messaging\outputs.tf" />
-    <File Path="infra\modules\messaging\variables.tf" />
+  <Folder Name="/infra/modules/rds/">
+    <File Path="infra\modules\rds\main.tf" />
+    <File Path="infra\modules\rds\outputs.tf" />
+    <File Path="infra\modules\rds\variables.tf" />
   </Folder>
-  <Folder Name="/infra/modules/storage/">
-    <File Path="infra\modules\storage\main.tf" />
-    <File Path="infra\modules\storage\outputs.tf" />
-    <File Path="infra\modules\storage\variables.tf" />
+  <Folder Name="/infra/modules/s3/">
+    <File Path="infra\modules\s3\main.tf" />
+    <File Path="infra\modules\s3\outputs.tf" />
+    <File Path="infra\modules\s3\variables.tf" />
+  </Folder>
+  <Folder Name="/infra/modules/sqs/">
+    <File Path="infra\modules\sqs\main.tf" />
+    <File Path="infra\modules\sqs\outputs.tf" />
+    <File Path="infra\modules\sqs\variables.tf" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/DistributedFileProcessor.API/DistributedFileProcessor.API.csproj" />
