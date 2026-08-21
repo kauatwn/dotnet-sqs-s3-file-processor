@@ -18,6 +18,12 @@ variable "environment" {
   }
 }
 
+variable "sqs_queue_arn" {
+  type        = string
+  default     = null
+  description = "Optional ARN of an SQS queue to receive S3 ObjectCreated event notifications."
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}
