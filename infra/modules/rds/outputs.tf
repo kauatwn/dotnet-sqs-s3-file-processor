@@ -1,3 +1,15 @@
+output "db_instance_id" {
+  type        = string
+  description = "The ID of the RDS database instance."
+  value       = aws_db_instance.this.id
+}
+
+output "db_instance_arn" {
+  type        = string
+  description = "The ARN of the RDS database instance."
+  value       = aws_db_instance.this.arn
+}
+
 output "db_instance_endpoint" {
   type        = string
   description = "The connection endpoint in the format host:port."
@@ -26,13 +38,6 @@ output "db_username" {
   type        = string
   description = "The master username for the database."
   value       = aws_db_instance.this.username
-}
-
-output "db_password" {
-  type        = string
-  sensitive   = true
-  description = "The master password for the database."
-  value       = aws_db_instance.this.password
 }
 
 output "connection_string" {

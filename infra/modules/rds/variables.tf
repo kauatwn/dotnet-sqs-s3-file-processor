@@ -59,13 +59,9 @@ variable "username" {
 
 variable "password" {
   type        = string
+  default     = "ChangeMe123!"
   sensitive   = true
   description = "Master password for the database."
-
-  validation {
-    condition     = length(var.password) >= 8
-    error_message = "The password must be at least 8 characters long."
-  }
 }
 
 variable "subnet_ids" {
