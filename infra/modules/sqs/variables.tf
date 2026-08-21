@@ -51,6 +51,29 @@ variable "visibility_timeout_seconds" {
   }
 }
 
+variable "receive_wait_time_seconds" {
+  type        = number
+  default     = 20
+  description = "The time for which a ReceiveMessage call waits for a message to arrive (long polling, 0-20 seconds)."
+
+  validation {
+    condition     = var.receive_wait_time_seconds >= 0 && var.receive_wait_time_seconds <= 20
+    error_message = "The receive_wait_time_seconds must be between 0 and 20 seconds."
+  }
+}
+
+variable "sqs_managed_sse_enabled" {
+  type        = bool
+  default     = true
+  description = "Enable server-side encryption (SSE) using SQS-managed encryption keys (SSE-SQS)."
+}
+
+variable "source_s3_bucket_arn" {
+  type        = string
+  default     = null
+  description = "Optional ARN of an S3 bucket authorized to publish event notifications to this SQS queue."
+}
+
 variable "tags" {
   type        = map(string)
   default     = {}
