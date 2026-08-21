@@ -26,11 +26,45 @@ variable "vpc_id" {
 variable "subnet_ids" {
   type        = list(string)
   description = "List of subnet IDs for ECS task network interface attachment."
+
+  validation {
+    condition     = length(var.subnet_ids) > 0
+    error_message = "At least one subnet ID must be provided."
+  }
 }
 
 variable "security_group_ids" {
   type        = list(string)
   description = "List of security group IDs to assign to the ECS task network interfaces."
+
+  validation {
+    condition     = length(var.security_group_ids) > 0
+    error_message = "At least one security group ID must be provided."
+  }
+}
+
+variable "assign_public_ip" {
+  type        = bool
+  default     = true
+  description = "Whether to assign a public IP to Fargate task ENIs (true for public subnets/dev, false for private subnets)."
+}
+
+variable "s3_bucket_arn" {
+  type        = string
+  default     = null
+  description = "ARN of the S3 bucket the ECS tasks need access to."
+}
+
+variable "sqs_queue_arns" {
+  type        = list(string)
+  default     = []
+  description = "List of SQS queue ARNs the ECS tasks need access to (for scoped least privilege IAM policy)."
+}
+
+variable "secret_arns" {
+  type        = list(string)
+  default     = []
+  description = "List of AWS Secrets Manager secret ARNs the ECS tasks or execution role need access to."
 }
 
 variable "api_task_config" {
@@ -41,7 +75,8 @@ variable "api_task_config" {
     memory           = number
     desired_count    = number
     container_port   = number
-    environment_vars = map(string)
+    environment_vars = optional(map(string), {})
+    secrets          = optional(map(string), {})
   })
   description = "Configuration parameters for the Web API Fargate Task Definition and Service."
 
@@ -68,7 +103,8 @@ variable "worker_task_config" {
     cpu              = number
     memory           = number
     desired_count    = number
-    environment_vars = map(string)
+    environment_vars = optional(map(string), {})
+    secrets          = optional(map(string), {})
   })
   description = "Configuration parameters for the Background Worker Fargate Task Definition and Service."
 
