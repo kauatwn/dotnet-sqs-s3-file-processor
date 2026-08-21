@@ -21,7 +21,7 @@ public sealed partial class ProcessDocumentUseCase(
             LogJobNotFound(logger, jobId);
             return;
         }
-        
+
         if (job.Status == ProcessStatus.Completed)
         {
             LogJobAlreadyProcessed(logger, jobId);
@@ -32,19 +32,19 @@ public sealed partial class ProcessDocumentUseCase(
         {
             job.MarkAsProcessing();
             await jobRepository.UpdateAsync(job, cancellationToken);
-            
+
             LogJobProcessingStarted(logger, jobId);
-            
+
             await transactionRepository.DeleteByJobIdAsync(jobId, cancellationToken);
-            
+
             await using Stream fileStream = await fileStorage.DownloadFileAsync(job.S3ObjectKey, cancellationToken);
             IAsyncEnumerable<TransactionRecord> transactionStream = fileParser.ParseStreamAsync(fileStream, jobId, cancellationToken);
-            
+
             int totalProcessed = await transactionRepository.BulkInsertStreamAsync(transactionStream, cancellationToken);
 
             job.MarkAsCompleted();
             await jobRepository.UpdateAsync(job, cancellationToken);
-            
+
             LogJobProcessed(logger, jobId, totalProcessed);
         }
         catch (Exception ex)
@@ -59,7 +59,7 @@ public sealed partial class ProcessDocumentUseCase(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} not found in the database.")]
     static partial void LogJobNotFound(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
-    
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId} skipped because it is already Completed. Idempotency applied.")]
     static partial void LogJobAlreadyProcessed(ILogger<ProcessDocumentUseCase> logger, Guid jobId);
 

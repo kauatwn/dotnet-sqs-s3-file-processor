@@ -23,7 +23,7 @@ public class GetDocumentStatusUseCaseTests
     {
         // Arrange
         DocumentProcessJob job = new("test.csv", "documents/test.csv");
-        Guid generatedJobId = job.Id; 
+        Guid generatedJobId = job.Id;
         job.MarkAsProcessing();
 
         _repositoryMock
@@ -37,7 +37,7 @@ public class GetDocumentStatusUseCaseTests
         Assert.NotNull(response);
         Assert.Equal(generatedJobId, response.JobId);
         Assert.Equal(nameof(ProcessStatus.Processing), response.Status);
-        Assert.Equal(job.S3ObjectKey, response.S3ObjectKey); 
+        Assert.Equal(job.S3ObjectKey, response.S3ObjectKey);
     }
 
     [Fact(DisplayName = "Should return null when job does not exist")]

@@ -29,7 +29,7 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
 
         // Assert
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        
+
         DocumentUploadUrlResponse? result = await response.Content.ReadFromJsonAsync<DocumentUploadUrlResponse>(TestContext.Current.CancellationToken);
 
         Assert.NotNull(result);
@@ -75,7 +75,7 @@ public class DocumentsControllerTests(IntegrationTestWebAppFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         DocumentStatusResponse? result = await response.Content.ReadFromJsonAsync<DocumentStatusResponse>(TestContext.Current.CancellationToken);
-        
+
         Assert.NotNull(result);
         Assert.Equal(jobId, result.JobId);
         Assert.Equal(job.Status.ToString(), result.Status);

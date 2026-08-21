@@ -68,7 +68,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
 
         // Assert
         Assert.True(isProcessed, "O Worker demorou demais para processar ou a notificação do S3 falhou.");
-        
+
         int insertedCount = dbContext.TransactionRecords.Count(x => x.JobId == jobId);
         Assert.Equal(2, insertedCount);
     }
@@ -128,7 +128,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
                 jobMarkedAsFailed = true;
                 break;
             }
-            
+
             await Task.Delay(1000, TestContext.Current.CancellationToken);
         }
 
@@ -143,7 +143,7 @@ public class DocumentProcessingWorkerTests(IntegrationTestWebAppFactory factory)
             {
                 QueueUrl = dlqUrl,
                 MaxNumberOfMessages = 1,
-                WaitTimeSeconds = 2 
+                WaitTimeSeconds = 2
             }, TestContext.Current.CancellationToken);
 
             if (dlqResponse?.Messages is { Count: > 0 })
