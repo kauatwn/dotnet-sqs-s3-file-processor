@@ -75,11 +75,6 @@ variable "db_password" {
   default     = "ChangeMe123!"
   sensitive   = true
   description = "Master password for PostgreSQL RDS database."
-
-  validation {
-    condition     = length(var.db_password) >= 8
-    error_message = "The db_password must be at least 8 characters long."
-  }
 }
 
 variable "db_instance_class" {
