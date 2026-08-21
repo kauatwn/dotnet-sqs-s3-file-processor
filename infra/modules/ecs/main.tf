@@ -122,7 +122,7 @@ resource "aws_iam_role" "task_role" {
 
 # Policy allowing scoped SQS access for Task Role (Least Privilege)
 resource "aws_iam_role_policy" "task_sqs_policy" {
-  count = length(var.sqs_queue_arns) > 0 ? 1 : 0
+  count = var.enable_sqs_policy ? 1 : 0
   name  = "${var.cluster_name}-task-sqs-policy"
   role  = aws_iam_role.task_role.id
 
@@ -146,7 +146,7 @@ resource "aws_iam_role_policy" "task_sqs_policy" {
 
 # Policy allowing S3 access for Task Role (Storage of CSV files)
 resource "aws_iam_role_policy" "task_s3_policy" {
-  count = var.s3_bucket_arn != null ? 1 : 0
+  count = var.enable_s3_policy ? 1 : 0
   name  = "${var.cluster_name}-task-s3-policy"
   role  = aws_iam_role.task_role.id
 
