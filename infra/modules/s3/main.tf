@@ -33,9 +33,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   }
 }
 
-# S3 Event Notification to SQS Queue (Core functional architecture)
+# S3 Event Notification to SQS Queue (Using static boolean condition for plan stability)
 resource "aws_s3_bucket_notification" "sqs_notification" {
-  count  = var.sqs_queue_arn != null ? 1 : 0
+  count  = var.enable_sqs_notification ? 1 : 0
   bucket = aws_s3_bucket.this.id
 
   queue {

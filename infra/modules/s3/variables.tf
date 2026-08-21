@@ -18,10 +18,16 @@ variable "environment" {
   }
 }
 
+variable "enable_sqs_notification" {
+  type        = bool
+  default     = false
+  description = "Enable S3 ObjectCreated event notification to an SQS queue."
+}
+
 variable "sqs_queue_arn" {
   type        = string
-  default     = null
-  description = "Optional ARN of an SQS queue to receive S3 ObjectCreated event notifications."
+  default     = ""
+  description = "ARN of the SQS queue to receive event notifications (required when enable_sqs_notification is true)."
 }
 
 variable "tags" {
