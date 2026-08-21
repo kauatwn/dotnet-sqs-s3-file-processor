@@ -7,7 +7,14 @@ on:
 
 permissions:
   contents: read
-  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 env:
   AWS_ACCESS_KEY_ID: "test"
@@ -21,10 +28,13 @@ jobs:
   deploy-infra:
     name: "Provision Infrastructure & Deploy"
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: "Checkout code 🛎️"
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: "Start LocalStack 🐳"
         uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
@@ -192,5 +202,5 @@ jobs:
             -e S3_HOST="localhost:4566" \
             -v "${{ github.workspace }}/k6:/scripts" \
             -v "${{ github.workspace }}/tools/output:/data" \
-            grafana/k6:latest \
+            grafana/k6:2.2.0 \
             cloud run --local-execution /scripts/upload-documents-stress.js
