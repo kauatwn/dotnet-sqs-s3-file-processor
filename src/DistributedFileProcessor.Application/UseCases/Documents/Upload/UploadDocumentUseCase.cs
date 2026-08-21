@@ -21,13 +21,13 @@ public sealed partial class UploadDocumentUseCase(
             LogUploadProcessStarted(logger, request.FileName);
             Guid jobId = Guid.NewGuid();
             string s3ObjectKey = $"documents/{jobId}-{request.FileName}";
-            
+
             DocumentProcessJob job = new(jobId, request.FileName, s3ObjectKey);
             string preSignedUrl = await fileStorage.GeneratePreSignedUploadUrlAsync(s3ObjectKey, TimeSpan.FromMinutes(15));
-            
+
             await repository.AddAsync(job, cancellationToken);
             LogJobPersisted(logger, job.Id, request.FileName);
-            
+
             return new UploadDocumentResponse(job.Id, s3ObjectKey, preSignedUrl, job.Status);
         }
         catch (Exception ex)

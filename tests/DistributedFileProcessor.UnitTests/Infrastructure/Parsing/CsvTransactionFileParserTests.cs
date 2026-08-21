@@ -81,7 +81,7 @@ public class CsvTransactionFileParserTests
                                 Date,Amount,Description,AccountId
                                 2023-01-01,NotANumber,Supermarket,ACC-123
                                 """;
-        
+
         MemoryStream stream = CreateStreamFromCsv(invalidDataCsv);
 
         // Act

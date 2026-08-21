@@ -40,16 +40,16 @@ public class ProcessDocumentUseCaseTests
         _fileStorageMock.Verify(x => x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _jobRepositoryMock.Verify(x => x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-    
+
     [Fact(DisplayName = "Should early return and apply idempotency when job is Completed")]
     public async Task ExecuteAsync_ShouldReturnEarly_WhenJobIsCompleted()
     {
         // Arrange
         Guid jobId = Guid.NewGuid();
         DocumentProcessJob job = new("test-idempotency.csv", "documents/test-idempotency.csv");
-        
-        job.MarkAsProcessing(); 
-        job.MarkAsCompleted(); 
+
+        job.MarkAsProcessing();
+        job.MarkAsCompleted();
 
         _jobRepositoryMock
             .Setup(x => x.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
@@ -59,13 +59,13 @@ public class ProcessDocumentUseCaseTests
         await _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
 
         // Assert
-        _fileStorageMock.Verify(x => 
+        _fileStorageMock.Verify(x =>
             x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-            
-        _jobRepositoryMock.Verify(x => 
+
+        _jobRepositoryMock.Verify(x =>
             x.UpdateAsync(It.IsAny<DocumentProcessJob>(), It.IsAny<CancellationToken>()), Times.Never);
-            
-        _transactionRepositoryMock.Verify(x => 
+
+        _transactionRepositoryMock.Verify(x =>
             x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -83,7 +83,7 @@ public class ProcessDocumentUseCaseTests
         _fileStorageMock
             .Setup(x => x.DownloadFileAsync(job.S3ObjectKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MemoryStream());
-        
+
         _transactionRepositoryMock
             .Setup(x => x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Simulated database/parsing failure"));
@@ -94,10 +94,10 @@ public class ProcessDocumentUseCaseTests
         // Assert
         await Assert.ThrowsAsync<Exception>(Act);
         Assert.Equal(ProcessStatus.Failed, job.Status);
-        
+
         _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
-    
+
     [Fact(DisplayName = "Should delegate stream to repository and complete successfully")]
     public async Task ExecuteAsync_ShouldDelegateStreamToRepository_AndCompleteSuccessfully()
     {
@@ -108,15 +108,15 @@ public class ProcessDocumentUseCaseTests
         _jobRepositoryMock
             .Setup(x => x.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(job);
-        
+
         using MemoryStream fakeStream = new();
         _fileStorageMock
             .Setup(x => x.DownloadFileAsync(job.S3ObjectKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeStream);
-        
+
         int totalRecordsToSimulate = 5002;
         var fakeStreamEnumerable = CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId);
-        
+
         _fileParserMock
             .Setup(x => x.ParseStreamAsync(It.IsAny<Stream>(), jobId, It.IsAny<CancellationToken>()))
             .Returns(fakeStreamEnumerable);
@@ -127,15 +127,15 @@ public class ProcessDocumentUseCaseTests
 
         // Act
         await _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
-        
+
         // Assert
-        _transactionRepositoryMock.Verify(x => 
+        _transactionRepositoryMock.Verify(x =>
             x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Once);
 
         Assert.Equal(ProcessStatus.Completed, job.Status);
         _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
-    
+
     private static async IAsyncEnumerable<TransactionRecord> CreateFakeTransactionsAsync(int count, Guid jobId)
     {
         IEnumerable<TransactionRecord> records = Enumerable.Range(0, count)

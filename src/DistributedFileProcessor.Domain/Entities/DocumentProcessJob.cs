@@ -34,7 +34,7 @@ public sealed class DocumentProcessJob
         Status = ProcessStatus.Pending;
         CreatedAt = DateTime.UtcNow;
     }
-    
+
     public DocumentProcessJob(Guid id, string fileName, string s3ObjectKey)
     {
         if (id == Guid.Empty)

@@ -21,7 +21,7 @@ public sealed partial class SqsMessageConsumer(
     ILogger<SqsMessageConsumer> logger) : IMessageConsumer
 {
     private static readonly JsonSerializerOptions JsonOptions = JsonSerializerOptions.Web;
-    
+
     private readonly SqsOptions _options = options.Value;
     private readonly ResiliencePipeline _sqsPipeline = pipelineProvider.GetPipeline(PipelineKeys.Sqs);
 
