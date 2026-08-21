@@ -49,16 +49,28 @@ variable "assign_public_ip" {
   description = "Whether to assign a public IP to Fargate task ENIs (true for public subnets/dev, false for private subnets)."
 }
 
+variable "enable_s3_policy" {
+  type        = bool
+  default     = true
+  description = "Enable S3 access IAM policy on ECS Task Role."
+}
+
 variable "s3_bucket_arn" {
   type        = string
-  default     = null
+  default     = ""
   description = "ARN of the S3 bucket the ECS tasks need access to."
+}
+
+variable "enable_sqs_policy" {
+  type        = bool
+  default     = true
+  description = "Enable SQS access IAM policy on ECS Task Role."
 }
 
 variable "sqs_queue_arns" {
   type        = list(string)
   default     = []
-  description = "List of SQS queue ARNs the ECS tasks need access to (for scoped least privilege IAM policy)."
+  description = "List of SQS queue ARNs the ECS tasks need access to."
 }
 
 variable "secret_arns" {
