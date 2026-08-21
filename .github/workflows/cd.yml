@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: "Checkout code 🛎️"
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -81,7 +81,7 @@ jobs:
           echo "worker_repo=$(terraform output -raw ecr_worker_repository_url)" >> "$GITHUB_OUTPUT"
 
       - name: "Setup Docker Buildx 🐳"
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           driver-opts: network=host
 
@@ -192,13 +192,17 @@ jobs:
         run: docker compose run --rm csv-generator
 
       - name: "Run k6 Load Test & Stream to Cloud 📊"
+        env:
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
+          K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
         run: |
           docker run --rm \
             --network host \
             -e BASE_URL="${API_URL}" \
-            -e K6_CLOUD_TOKEN="${{ secrets.K6_CLOUD_TOKEN }}" \
-            -e K6_CLOUD_PROJECT_ID="${{ secrets.K6_CLOUD_PROJECT_ID }}" \
-            -e K6_CLOUD_STACK_ID="${{ secrets.K6_CLOUD_STACK_ID }}" \
+            -e K6_CLOUD_TOKEN="$K6_CLOUD_TOKEN" \
+            -e K6_CLOUD_PROJECT_ID="$K6_CLOUD_PROJECT_ID" \
+            -e K6_CLOUD_STACK_ID="$K6_CLOUD_STACK_ID" \
             -e S3_HOST="localhost:4566" \
             -v "${{ github.workspace }}/k6:/scripts" \
             -v "${{ github.workspace }}/tools/output:/data" \
