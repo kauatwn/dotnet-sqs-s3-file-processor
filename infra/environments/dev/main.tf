@@ -58,21 +58,23 @@ module "ecr_worker" {
 module "s3" {
   source = "../../modules/s3"
 
-  bucket_name   = local.bucket_name
-  environment   = var.environment
-  sqs_queue_arn = module.sqs.queue_arn
-  tags          = local.common_tags
+  bucket_name             = local.bucket_name
+  environment             = var.environment
+  enable_sqs_notification = true
+  sqs_queue_arn           = module.sqs.queue_arn
+  tags                    = local.common_tags
 }
 
 # 4. Pure Module: SQS Queue & Dead Letter Queue (DLQ) with S3 Bucket Event Authorization
 module "sqs" {
   source = "../../modules/sqs"
 
-  queue_name           = local.queue_name
-  environment          = var.environment
-  max_receive_count    = 5
-  source_s3_bucket_arn = "arn:aws:s3:::${local.bucket_name}"
-  tags                 = local.common_tags
+  queue_name             = local.queue_name
+  environment            = var.environment
+  max_receive_count      = 5
+  enable_s3_event_policy = true
+  source_s3_bucket_arn   = "arn:aws:s3:::${local.bucket_name}"
+  tags                   = local.common_tags
 }
 
 # 5. Pure Module: RDS PostgreSQL Database
@@ -100,7 +102,9 @@ module "ecs" {
   vpc_id             = data.aws_vpc.default.id
   subnet_ids         = data.aws_subnets.default.ids
   security_group_ids = local.effective_security_group_ids
-  s3_bucket_arn      = module.s3.bucket_arn
+  enable_s3_policy   = true
+  s3_bucket_arn      = "arn:aws:s3:::${local.bucket_name}"
+  enable_sqs_policy  = true
   sqs_queue_arns     = [module.sqs.queue_arn, module.sqs.dlq_arn]
 
   api_task_config = {
