@@ -43,7 +43,7 @@ resource "aws_cloudwatch_log_group" "worker" {
   )
 }
 
-# IAM Execution Role for ECS Tasks (Pulling images, pushing logs)
+# IAM Execution Role for ECS Tasks (Pulling images, pushing logs, retrieving secrets)
 resource "aws_iam_role" "execution_role" {
   name = "${var.cluster_name}-ecs-execution-role"
 
@@ -74,6 +74,26 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Secrets Manager access for ECS Task Execution Role (when secrets are injected)
+resource "aws_iam_role_policy" "execution_secrets_policy" {
+  count = length(var.secret_arns) > 0 ? 1 : 0
+  name  = "${var.cluster_name}-execution-secrets-policy"
+  role  = aws_iam_role.execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = var.secret_arns
+      }
+    ]
+  })
+}
+
 # IAM Task Role for Application runtime (SQS, S3 access)
 resource "aws_iam_role" "task_role" {
   name = "${var.cluster_name}-ecs-task-role"
@@ -100,10 +120,11 @@ resource "aws_iam_role" "task_role" {
   )
 }
 
-# Policy allowing SQS access for Task Role
+# Policy allowing scoped SQS access for Task Role (Least Privilege)
 resource "aws_iam_role_policy" "task_sqs_policy" {
-  name = "${var.cluster_name}-task-sqs-policy"
-  role = aws_iam_role.task_role.id
+  count = length(var.sqs_queue_arns) > 0 ? 1 : 0
+  name  = "${var.cluster_name}-task-sqs-policy"
+  role  = aws_iam_role.task_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -117,7 +138,36 @@ resource "aws_iam_role_policy" "task_sqs_policy" {
           "sqs:GetQueueAttributes",
           "sqs:GetQueueUrl"
         ]
-        Resource = "*"
+        Resource = var.sqs_queue_arns
+      }
+    ]
+  })
+}
+
+# Policy allowing S3 access for Task Role (Storage of CSV files)
+resource "aws_iam_role_policy" "task_s3_policy" {
+  count = var.s3_bucket_arn != null ? 1 : 0
+  name  = "${var.cluster_name}-task-s3-policy"
+  role  = aws_iam_role.task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${var.s3_bucket_arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = var.s3_bucket_arn
       }
     ]
   })
@@ -153,11 +203,17 @@ resource "aws_ecs_task_definition" "api" {
           value = value
         }
       ]
+      secrets = [
+        for key, value in var.api_task_config.secrets : {
+          name      = key
+          valueFrom = value
+        }
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.api.name
-          "awslogs-region"        = data.aws_region.current.region
+          "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "api"
         }
       }
@@ -196,11 +252,17 @@ resource "aws_ecs_task_definition" "worker" {
           value = value
         }
       ]
+      secrets = [
+        for key, value in var.worker_task_config.secrets : {
+          name      = key
+          valueFrom = value
+        }
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.worker.name
-          "awslogs-region"        = data.aws_region.current.region
+          "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "worker"
         }
       }
@@ -224,10 +286,18 @@ resource "aws_ecs_service" "api" {
   desired_count   = var.api_task_config.desired_count
   launch_type     = "FARGATE"
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = var.subnet_ids
     security_groups  = var.security_group_ids
-    assign_public_ip = true
+    assign_public_ip = var.assign_public_ip
   }
 
   tags = merge(
@@ -247,10 +317,18 @@ resource "aws_ecs_service" "worker" {
   desired_count   = var.worker_task_config.desired_count
   launch_type     = "FARGATE"
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
   network_configuration {
     subnets          = var.subnet_ids
     security_groups  = var.security_group_ids
-    assign_public_ip = true
+    assign_public_ip = var.assign_public_ip
   }
 
   tags = merge(
