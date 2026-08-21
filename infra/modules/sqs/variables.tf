@@ -68,10 +68,16 @@ variable "sqs_managed_sse_enabled" {
   description = "Enable server-side encryption (SSE) using SQS-managed encryption keys (SSE-SQS)."
 }
 
+variable "enable_s3_event_policy" {
+  type        = bool
+  default     = false
+  description = "Enable SQS queue policy granting S3 event notification permissions."
+}
+
 variable "source_s3_bucket_arn" {
   type        = string
-  default     = null
-  description = "Optional ARN of an S3 bucket authorized to publish event notifications to this SQS queue."
+  default     = ""
+  description = "ARN of the S3 bucket authorized to publish event notifications (required when enable_s3_event_policy is true)."
 }
 
 variable "tags" {

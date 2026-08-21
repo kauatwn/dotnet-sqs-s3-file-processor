@@ -49,7 +49,7 @@ resource "aws_sqs_queue" "main" {
 
 # SQS Queue Policy granting S3 event notification permissions with Confused Deputy protection
 resource "aws_sqs_queue_policy" "s3_events" {
-  count     = var.source_s3_bucket_arn != null ? 1 : 0
+  count     = var.enable_s3_event_policy ? 1 : 0
   queue_url = aws_sqs_queue.main.id
 
   policy = jsonencode({
