@@ -65,41 +65,10 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  build:
-    name: "Build Solution"
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    steps:
-      - name: "Checkout code 🛎️"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: "Setup .NET 🟣"
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: "Cache NuGet packages 📦"
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
-      - name: "Restore dependencies 📦"
-        run: dotnet restore DistributedFileProcessor.slnx
-
-      - name: "Build Solution 🔨"
-        run: dotnet build DistributedFileProcessor.slnx --no-restore --configuration Release
-
   unit-tests:
     name: "Unit Tests"
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: [build]
 
     steps:
       - name: "Checkout code 🛎️"
@@ -145,7 +114,6 @@ jobs:
     name: "Integration Tests"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    needs: [build]
 
     env:
       LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
@@ -194,7 +162,7 @@ jobs:
     name: "Code Quality - SonarQube"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    needs: [build, unit-tests, integration-tests]
+    needs: [unit-tests, integration-tests]
 
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
