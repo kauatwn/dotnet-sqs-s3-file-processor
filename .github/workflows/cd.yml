@@ -206,5 +206,5 @@ jobs:
             -e S3_HOST="localhost:4566" \
             -v "${{ github.workspace }}/k6:/scripts" \
             -v "${{ github.workspace }}/tools/output:/data" \
-            grafana/k6:2.2.0 \
+            grafana/k6:latest \
             cloud run --local-execution /scripts/upload-documents-stress.js

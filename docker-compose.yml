@@ -51,7 +51,7 @@ services:
     command: ["dotnet", "run", "CsvGenerator.cs"]
 
   k6:
-    image: grafana/k6:2.0.0
+    image: grafana/k6:latest
     container_name: distributedfileprocessor-k6
     profiles: ["loadtest"]
     extra_hosts:
