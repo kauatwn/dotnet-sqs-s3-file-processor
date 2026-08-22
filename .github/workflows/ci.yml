@@ -129,7 +129,17 @@ jobs:
             tests/DistributedFileProcessor.UnitTests/DistributedFileProcessor.UnitTests.csproj \
             --no-restore \
             --configuration Release \
-            --verbosity normal
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults/UnitTests \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: "Upload Unit Tests Coverage 📤"
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unit-test-coverage
+          path: ./TestResults/UnitTests/**/coverage.opencover.xml
+          retention-days: 1
 
   integration-tests:
     name: "Integration Tests"
@@ -168,13 +178,23 @@ jobs:
             tests/DistributedFileProcessor.IntegrationTests/DistributedFileProcessor.IntegrationTests.csproj \
             --no-restore \
             --configuration Release \
-            --verbosity normal
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults/IntegrationTests \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: "Upload Integration Tests Coverage 📤"
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-test-coverage
+          path: ./TestResults/IntegrationTests/**/coverage.opencover.xml
+          retention-days: 1
 
   sonar:
     name: "Code Quality - SonarQube"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    needs: [build]
+    needs: [build, unit-tests, integration-tests]
 
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -226,6 +246,13 @@ jobs:
           mkdir -p ${{ runner.temp }}/scanner
           dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}/scanner
 
+      - name: "Download Coverage Artifacts 📥"
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*-coverage"
+          path: TestResults
+          merge-multiple: true
+
       - name: "Restore dependencies 📦"
         run: dotnet restore DistributedFileProcessor.slnx
 
@@ -242,15 +269,6 @@ jobs:
 
       - name: "Build Solution 🔨"
         run: dotnet build DistributedFileProcessor.slnx --no-restore --configuration Release
-
-      - name: "Run Unit Tests for Coverage 🧪"
-        run: |
-          dotnet test DistributedFileProcessor.slnx \
-            --no-build \
-            --configuration Release \
-            --filter "Category=Unit" \
-            --collect:"XPlat Code Coverage" \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
 
       - name: "End SonarQube Cloud Analysis 📊"
         run: ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
