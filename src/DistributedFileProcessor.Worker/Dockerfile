@@ -17,15 +17,10 @@ COPY ["src/DistributedFileProcessor.Infrastructure/DistributedFileProcessor.Infr
 RUN dotnet restore "./src/DistributedFileProcessor.Worker/DistributedFileProcessor.Worker.csproj"
 COPY . .
 WORKDIR "/src/src/DistributedFileProcessor.Worker"
-RUN dotnet build "./DistributedFileProcessor.Worker.csproj" -c "$BUILD_CONFIGURATION" -o /app/build
-
-# This stage is used to publish the service project to be copied to the final stage
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish "./DistributedFileProcessor.Worker.csproj" -c "$BUILD_CONFIGURATION" -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
 FROM base AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "DistributedFileProcessor.Worker.dll"]
