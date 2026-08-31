@@ -12,6 +12,7 @@ public sealed class DocumentProcessJob
     public DateTime? ProcessedAt { get; private set; }
     public string? FailureReason { get; private set; }
 
+    // Required by Entity Framework Core for reflection-based materialization
     private DocumentProcessJob() { }
 
     public DocumentProcessJob(string fileName, string s3ObjectKey)

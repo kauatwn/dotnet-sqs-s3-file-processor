@@ -1,17 +1,15 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace DistributedFileProcessor.Domain.Entities;
 
-[ExcludeFromCodeCoverage]
 public sealed class TransactionRecord
 {
     public Guid Id { get; private set; }
     public Guid JobId { get; private set; }
     public DateTime TransactionDate { get; private set; }
     public decimal Amount { get; private set; }
-    public string Description { get; private set; }
-    public string AccountId { get; private set; }
+    public string Description { get; private set; } = null!;
+    public string AccountId { get; private set; } = null!;
 
+    // Required by Entity Framework Core for reflection-based materialization
     private TransactionRecord() { }
 
     public TransactionRecord(Guid jobId, DateTime transactionDate, decimal amount, string description, string accountId)
