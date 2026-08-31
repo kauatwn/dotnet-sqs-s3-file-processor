@@ -99,15 +99,16 @@ jobs:
             --no-restore \
             --configuration Release \
             --verbosity normal \
-            --collect:"XPlat Code Coverage" \
-            --results-directory ./TestResults/UnitTests \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+            -- \
+            --coverage \
+            --coverage-output-format cobertura \
+            --results-directory ./TestResults/UnitTests
 
       - name: "Upload Unit Tests Coverage 📤"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: unit-test-coverage
-          path: ./TestResults/UnitTests/**/coverage.opencover.xml
+          path: ./TestResults/UnitTests/**/*.cobertura.xml
           retention-days: 1
 
   integration-tests:
@@ -147,15 +148,16 @@ jobs:
             --no-restore \
             --configuration Release \
             --verbosity normal \
-            --collect:"XPlat Code Coverage" \
-            --results-directory ./TestResults/IntegrationTests \
-            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+            -- \
+            --coverage \
+            --coverage-output-format cobertura \
+            --results-directory ./TestResults/IntegrationTests
 
       - name: "Upload Integration Tests Coverage 📤"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: integration-test-coverage
-          path: ./TestResults/IntegrationTests/**/coverage.opencover.xml
+          path: ./TestResults/IntegrationTests/**/*.cobertura.xml
           retention-days: 1
 
   sonar:
@@ -232,7 +234,7 @@ jobs:
             /d:sonar.token="$SONAR_TOKEN" \
             /d:sonar.host.url="https://sonarcloud.io" \
             /d:sonar.projectBaseDir="${{ github.workspace }}" \
-            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.cs.cobertura.reportsPaths="**/*.cobertura.xml" \
             /d:sonar.coverage.exclusions="**Program.cs,**/Configurations/**,**/Migrations/**,**/k6/**"
 
       - name: "Build Solution 🔨"
