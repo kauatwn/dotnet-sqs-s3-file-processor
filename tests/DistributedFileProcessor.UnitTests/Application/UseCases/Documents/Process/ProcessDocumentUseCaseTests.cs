@@ -1,4 +1,4 @@
-﻿using DistributedFileProcessor.Application.Interfaces;
+using DistributedFileProcessor.Application.Interfaces;
 using DistributedFileProcessor.Application.UseCases.Documents.Process;
 using DistributedFileProcessor.Domain.Entities;
 using DistributedFileProcessor.Domain.Enums;
@@ -114,8 +114,8 @@ public class ProcessDocumentUseCaseTests
             .Setup(x => x.DownloadFileAsync(job.S3ObjectKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync(fakeStream);
 
-        int totalRecordsToSimulate = 5002;
-        var fakeStreamEnumerable = CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId);
+        const int totalRecordsToSimulate = 5002;
+        IAsyncEnumerable<TransactionRecord> fakeStreamEnumerable = CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId);
 
         _fileParserMock
             .Setup(x => x.ParseStreamAsync(It.IsAny<Stream>(), jobId, It.IsAny<CancellationToken>()))
@@ -133,6 +133,48 @@ public class ProcessDocumentUseCaseTests
             x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Once);
 
         Assert.Equal(ProcessStatus.Completed, job.Status);
+        _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact(DisplayName = "Should successfully reprocess a job that was previously marked as Failed (SQS retry)")]
+    public async Task ExecuteAsync_ShouldSuccessfullyReprocess_WhenJobWasFailed()
+    {
+        // Arrange
+        Guid jobId = Guid.NewGuid();
+        DocumentProcessJob job = new("retry-test.csv", "documents/retry-test.csv");
+        job.MarkAsProcessing();
+        job.MarkAsFailed("Previous transient failure");
+        Assert.Equal(ProcessStatus.Failed, job.Status);
+
+        _jobRepositoryMock
+            .Setup(x => x.GetByIdAsync(jobId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(job);
+
+        using MemoryStream fakeStream = new();
+        _fileStorageMock
+            .Setup(x => x.DownloadFileAsync(job.S3ObjectKey, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fakeStream);
+
+        const int totalRecordsToSimulate = 100;
+        IAsyncEnumerable<TransactionRecord> fakeStreamEnumerable = CreateFakeTransactionsAsync(totalRecordsToSimulate, jobId);
+
+        _fileParserMock
+            .Setup(x => x.ParseStreamAsync(It.IsAny<Stream>(), jobId, It.IsAny<CancellationToken>()))
+            .Returns(fakeStreamEnumerable);
+
+        _transactionRepositoryMock
+            .Setup(x => x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(totalRecordsToSimulate);
+
+        // Act
+        await _sut.ExecuteAsync(jobId, TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(ProcessStatus.Completed, job.Status);
+        Assert.Null(job.FailureReason);
+        _transactionRepositoryMock.Verify(x => x.DeleteByJobIdAsync(jobId, It.IsAny<CancellationToken>()), Times.Once);
+        _transactionRepositoryMock.Verify(x =>
+            x.BulkInsertStreamAsync(It.IsAny<IAsyncEnumerable<TransactionRecord>>(), It.IsAny<CancellationToken>()), Times.Once);
         _jobRepositoryMock.Verify(x => x.UpdateAsync(job, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
