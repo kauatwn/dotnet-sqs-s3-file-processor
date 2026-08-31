@@ -52,4 +52,8 @@ Decisões de engenharia pragmáticas geram _trade-offs_ explícitos no sistema:
   - _Mitigação para Produção:_ A implementação de um _Sweeper Worker_ para expurgo de dados antigos em background ou a alocação desse estado transitório no **Redis** com _Time-To-Live (TTL)_.
 
 - **Perda de Validação Imediata:** Ao contornar a API para o envio direto do arquivo à nuvem, validações síncronas de estrutura do _payload_ na borda são sacrificadas. Arquivos corrompidos ou com layouts inválidos só serão detectados de forma assíncrona pelo Worker, resultando no roteamento da mensagem para a DLQ.
+
 - **High-Throughput vs. Physical Insertion Order:** Para atingir a métrica de muitos registros inseridos por segundo, a ordenação física de inserção no banco de dados é abdicada em favor da velocidade de gravação massiva. A consistência temporal passa a depender exclusivamente das propriedades ACID do PostgreSQL e das lógicas de data do próprio domínio.
+
+- **Premissa de Instância Única vs. Concorrência Distribuída (Single-Worker Assumption):** O ecossistema foi projetado e dimensionado assumindo uma única réplica ativa de consumo (`desired_count = 1`). Caso o serviço seja escalado horizontalmente (múltiplos workers paralelos ou auto scaling no ECS Fargate), a validação de estado em memória atual pode sofrer com _race conditions_ decorrentes da entrega _At-Least-Once_ do SQS.
+  - _Mitigação para Produção:_ Evoluir a checagem de estado para uma transição atômica/condicional no banco de dados (`UPDATE document_process_jobs SET status = 'Processing' WHERE id = @jobId AND status = 'Pending'`) ou implementar controle de versão por _Optimistic Locking_ via `xmin` (PostgreSQL) / `RowVersion` no EF Core.
