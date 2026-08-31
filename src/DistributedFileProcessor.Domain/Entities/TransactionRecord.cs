@@ -14,20 +14,9 @@ public sealed class TransactionRecord
 
     public TransactionRecord(Guid jobId, DateTime transactionDate, decimal amount, string description, string accountId)
     {
-        if (jobId == Guid.Empty)
-        {
-            throw new ArgumentException("Job ID must not be empty.", nameof(jobId));
-        }
-
-        if (string.IsNullOrWhiteSpace(description))
-        {
-            throw new ArgumentException("Description is required.", nameof(description));
-        }
-
-        if (string.IsNullOrWhiteSpace(accountId))
-        {
-            throw new ArgumentException("Account ID is required.", nameof(accountId));
-        }
+        ArgumentOutOfRangeException.ThrowIfEqual(jobId, Guid.Empty);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
 
         Id = Guid.NewGuid();
         JobId = jobId;
