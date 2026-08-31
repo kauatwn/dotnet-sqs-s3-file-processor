@@ -5,8 +5,8 @@
     <File Path="infra\environments\dev\main.tf" />
     <File Path="infra\environments\dev\outputs.tf" />
     <File Path="infra\environments\dev\providers.tf" />
+    <File Path="infra\environments\dev\terraform.tf" />
     <File Path="infra\environments\dev\variables.tf" />
-    <File Path="infra\environments\dev\versions.tf" />
   </Folder>
   <Folder Name="/infra/modules/" />
   <Folder Name="/infra/modules/ecr/">
