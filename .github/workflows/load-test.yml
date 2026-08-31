@@ -1,0 +1,209 @@
+name: "Performance & Load Testing (k6)"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  AWS_ACCESS_KEY_ID: "test"
+  AWS_SECRET_ACCESS_KEY: "test"
+  AWS_DEFAULT_REGION: "us-east-1"
+  AWS_PAGER: ""
+  LOCALSTACK_ENDPOINT: "http://127.0.0.1:4566"
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  load-test:
+    name: "Run k6 Load Test on LocalStack"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: "Checkout code 🛎️"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "Setup .NET 🟣"
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: "Start LocalStack 🐳"
+        uses: LocalStack/setup-localstack@7c8a0cb3405bc58be4c8f763f812aa000bc46303 # v0.3.2
+        with:
+          image-tag: "2026.07.0"
+          configuration: |
+            ECS_DOCKER_FLAGS="-p 0:8080"
+        env:
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+
+      - name: "Setup Terraform 🛠️"
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+
+      - name: "Terraform Init 🚀"
+        working-directory: infra/environments/dev
+        run: terraform init
+
+      - name: "Terraform Plan (Target ECR) 📋"
+        working-directory: infra/environments/dev
+        run: |
+          terraform plan \
+            -target="module.ecr_api.aws_ecr_repository.this" \
+            -target="module.ecr_worker.aws_ecr_repository.this" \
+            -var="localstack_endpoint=${{ env.LOCALSTACK_ENDPOINT }}" \
+            -out=tfplan-ecr
+
+      - name: "Terraform Apply (Target ECR) 🏗️"
+        working-directory: infra/environments/dev
+        run: terraform apply -input=false tfplan-ecr
+
+      - name: "Export ECR Outputs 📤"
+        id: ecr-outputs
+        working-directory: infra/environments/dev
+        run: |
+          echo "api_repo=$(terraform output -raw ecr_api_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "worker_repo=$(terraform output -raw ecr_worker_repository_url)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Docker Buildx 🐳"
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver-opts: network=host
+
+      - name: "Build and Push API Docker Image 📦"
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: src/DistributedFileProcessor.API/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-outputs.outputs.api_repo }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-outputs.outputs.api_repo }}:latest
+          platforms: linux/amd64
+          cache-from: type=gha,scope=api-build
+          cache-to: type=gha,mode=max,scope=api-build
+
+      - name: "Build and Push Worker Docker Image 📦"
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: src/DistributedFileProcessor.Worker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr-outputs.outputs.worker_repo }}:${{ env.IMAGE_TAG }}
+            ${{ steps.ecr-outputs.outputs.worker_repo }}:latest
+          platforms: linux/amd64
+          cache-from: type=gha,scope=worker-build
+          cache-to: type=gha,mode=max,scope=worker-build
+
+      - name: "Terraform Plan (Full Infrastructure) 📋"
+        working-directory: infra/environments/dev
+        run: |
+          terraform plan \
+            -var="localstack_endpoint=${{ env.LOCALSTACK_ENDPOINT }}" \
+            -var="image_tag=${{ env.IMAGE_TAG }}" \
+            -out=tfplan-full
+
+      - name: "Terraform Apply (Full Infrastructure) 🏗️"
+        working-directory: infra/environments/dev
+        run: terraform apply -input=false tfplan-full
+
+      - name: "Export ECS Outputs 📤"
+        id: ecs-outputs
+        working-directory: infra/environments/dev
+        run: |
+          echo "cluster_arn=$(terraform output -raw ecs_cluster_arn)" >> "$GITHUB_OUTPUT"
+          echo "api_service_name=$(terraform output -raw ecs_api_service_name)" >> "$GITHUB_OUTPUT"
+          echo "worker_service_name=$(terraform output -raw ecs_worker_service_name)" >> "$GITHUB_OUTPUT"
+
+      - name: "Wait for ECS Services to Stabilize ⏳"
+        run: |
+          aws --endpoint-url="$LOCALSTACK_ENDPOINT" ecs wait services-stable \
+            --cluster "${{ steps.ecs-outputs.outputs.cluster_arn }}" \
+            --services \
+              "${{ steps.ecs-outputs.outputs.api_service_name }}" \
+              "${{ steps.ecs-outputs.outputs.worker_service_name }}"
+
+      - name: "Resolve API Endpoint from Docker 🔍"
+        run: |
+          echo "--- Waiting for API container to start ---"
+
+          for i in $(seq 1 30); do
+            CONTAINER_ID=$(docker ps \
+              --filter "name=ls-ecs-" \
+              --filter "publish=8080" \
+              --format '{{.ID}}' | head -n 1)
+
+            if [ -n "$CONTAINER_ID" ]; then
+              echo "Found ECS container: $CONTAINER_ID"
+              break
+            fi
+
+            echo "Attempt $i/30: No ECS container with port 8080 found yet, retrying in 5s..."
+            sleep 5
+          done
+
+          if [ -z "$CONTAINER_ID" ]; then
+            echo "ERROR: No ECS container with port 8080 found after 150s"
+            echo "--- All running containers ---"
+            docker ps -a
+            exit 1
+          fi
+
+          HOST_PORT=$(docker port "$CONTAINER_ID" 8080/tcp | head -n 1 | cut -d: -f2)
+
+          if [ -z "$HOST_PORT" ]; then
+            echo "ERROR: Port 8080 not mapped for container $CONTAINER_ID"
+            docker inspect "$CONTAINER_ID"
+            exit 1
+          fi
+
+          echo "API accessible at: http://127.0.0.1:$HOST_PORT"
+          echo "API_URL=http://127.0.0.1:$HOST_PORT" >> "$GITHUB_ENV"
+
+      - name: "Run E2E Smoke Test 🧪"
+        run: |
+          echo "--- Smoke testing API at ${API_URL} ---"
+
+          curl --retry 10 \
+            --retry-delay 3 \
+            --retry-connrefused \
+            --fail \
+            -sS \
+            -X POST \
+            "${API_URL}/api/documents/upload" \
+            -H "Content-Type: application/json" \
+            -d '{"fileName":"ci_smoke_test.csv"}'
+
+      - name: "Generate CSV Payload for Load Test 📄"
+        working-directory: tools
+        run: dotnet run CsvGenerator.cs
+
+      - name: "Run k6 Load Test & Stream to Cloud 📊"
+        env:
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
+          K6_CLOUD_STACK_ID: ${{ secrets.K6_CLOUD_STACK_ID }}
+        run: |
+          docker run --rm \
+            --network host \
+            -e BASE_URL="${API_URL}" \
+            -e K6_CLOUD_TOKEN="$K6_CLOUD_TOKEN" \
+            -e K6_CLOUD_PROJECT_ID="$K6_CLOUD_PROJECT_ID" \
+            -e K6_CLOUD_STACK_ID="$K6_CLOUD_STACK_ID" \
+            -e S3_HOST="localhost:4566" \
+            -v "${{ github.workspace }}/k6:/scripts" \
+            -v "${{ github.workspace }}/tools/output:/data" \
+            grafana/k6:latest \
+            cloud run --local-execution /scripts/upload-documents-stress.js
