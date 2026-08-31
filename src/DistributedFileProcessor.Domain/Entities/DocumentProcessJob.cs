@@ -1,14 +1,12 @@
-using System.Diagnostics.CodeAnalysis;
 using DistributedFileProcessor.Domain.Enums;
 
 namespace DistributedFileProcessor.Domain.Entities;
 
-[ExcludeFromCodeCoverage]
 public sealed class DocumentProcessJob
 {
     public Guid Id { get; private set; }
-    public string FileName { get; private set; }
-    public string S3ObjectKey { get; private set; }
+    public string FileName { get; private set; } = null!;
+    public string S3ObjectKey { get; private set; } = null!;
     public ProcessStatus Status { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? ProcessedAt { get; private set; }
@@ -61,12 +59,13 @@ public sealed class DocumentProcessJob
 
     public void MarkAsProcessing()
     {
-        if (Status != ProcessStatus.Pending)
+        if (Status != ProcessStatus.Pending && Status != ProcessStatus.Failed)
         {
-            throw new InvalidOperationException("Only documents with 'Pending' status can transition to 'Processing'.");
+            throw new InvalidOperationException($"Only documents with 'Pending' or 'Failed' status can transition to 'Processing'. Current status: {Status}");
         }
 
         Status = ProcessStatus.Processing;
+        FailureReason = null;
     }
 
     public void MarkAsCompleted()
