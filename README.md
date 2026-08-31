@@ -54,3 +54,6 @@ Pragmatic engineering decisions introduce explicit trade-offs into the system:
 - **Loss of Immediate Validation:** By bypassing the API and uploading the file directly to the cloud, synchronous payload structure validation at the edge is sacrificed. Corrupted files or invalid layouts are detected asynchronously by the Worker, resulting in the message being routed to the DLQ.
 
 - **High Throughput vs. Physical Insertion Order:** To achieve high records-per-second insertion rates, physical insertion ordering in the database is sacrificed in favor of bulk write performance. Temporal consistency instead relies exclusively on PostgreSQL's ACID properties and the domain's own date-handling logic.
+
+- **Single-Worker Assumption vs. Distributed Concurrency:** The ecosystem is designed and sized assuming a single active worker replica (`desired_count = 1`). If the service is scaled horizontally (multiple parallel workers or ECS Fargate Auto Scaling), the current in-memory state check may encounter race conditions due to SQS's native _At-Least-Once_ delivery.
+  - _Production Mitigation:_ Evolve the status transition into an atomic/conditional update in the database (`UPDATE document_process_jobs SET status = 'Processing' WHERE id = @jobId AND status = 'Pending'`) or implement optimistic concurrency control using PostgreSQL's native `xmin` / `RowVersion` in EF Core.
