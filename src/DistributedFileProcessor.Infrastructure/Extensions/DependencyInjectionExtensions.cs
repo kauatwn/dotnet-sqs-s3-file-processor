@@ -78,7 +78,7 @@ public static class DependencyInjectionExtensions
     {
         services.AddResiliencePipeline(PipelineKeys.S3, builder =>
         {
-            builder.AddTimeout(TimeSpan.FromSeconds(15));
+            builder.AddTimeout(TimeSpan.FromSeconds(30));
             builder.AddRetry(new RetryStrategyOptions
             {
                 ShouldHandle = new PredicateBuilder()
@@ -89,12 +89,12 @@ public static class DependencyInjectionExtensions
                 UseJitter = true
             });
 
-            builder.AddTimeout(TimeSpan.FromSeconds(5));
+            builder.AddTimeout(TimeSpan.FromSeconds(10));
         });
 
         services.AddResiliencePipeline(PipelineKeys.Sqs, builder =>
         {
-            builder.AddTimeout(TimeSpan.FromSeconds(5));
+            builder.AddTimeout(TimeSpan.FromSeconds(30));
             builder.AddRetry(new RetryStrategyOptions
             {
                 ShouldHandle = new PredicateBuilder()
@@ -106,7 +106,7 @@ public static class DependencyInjectionExtensions
                 UseJitter = true
             });
 
-            builder.AddTimeout(TimeSpan.FromSeconds(2));
+            builder.AddTimeout(TimeSpan.FromSeconds(25));
         });
     }
 }
