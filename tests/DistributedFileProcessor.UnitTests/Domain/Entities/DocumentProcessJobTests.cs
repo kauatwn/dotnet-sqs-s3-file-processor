@@ -58,8 +58,8 @@ public class DocumentProcessJobTests
         Assert.Throws<ArgumentException>(Act);
     }
 
-    [Fact(DisplayName = "Should throw ArgumentException when explicit Id is empty")]
-    public void Constructor_WithEmptyGuid_ShouldThrowArgumentException()
+    [Fact(DisplayName = "Should throw ArgumentOutOfRangeException when explicit Id is empty")]
+    public void Constructor_WithEmptyGuid_ShouldThrowArgumentOutOfRangeException()
     {
         // Arrange
         Guid emptyId = Guid.Empty;
@@ -70,7 +70,7 @@ public class DocumentProcessJobTests
         void Act() => _ = new DocumentProcessJob(emptyId, fileName, s3Key);
 
         // Assert
-        Assert.Throws<ArgumentException>(Act);
+        Assert.Throws<ArgumentOutOfRangeException>(Act);
     }
 
     [Fact(DisplayName = "Should transition status from Pending to Processing")]
