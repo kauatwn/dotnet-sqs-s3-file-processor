@@ -1,6 +1,11 @@
 # Created by https://www.toptal.com/developers/gitignore/api/windows,linux,macos,visualstudio,visualstudiocode,rider,terraform,localstack
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,linux,macos,visualstudio,visualstudiocode,rider,terraform,localstack
 
+### Environment Secrets ###
+.env
+.env.*
+*.env
+
 ### Linux ###
 *~
 
